@@ -7,7 +7,7 @@ from datetime import date
 from pypdf import PdfWriter
 
 from app.models import Claim, DocumentInfo
-from app.orchestrator import assess_claim
+from app.pipeline import assess_claim
 import hashlib
 
 
@@ -31,7 +31,7 @@ CLEAN = Claim(
     claimed_amount=41850, submitted_on=date(2026, 11, 10),
     invoice={"invoice_number": "INV-9001", "invoice_date": date(2026, 11, 5),
              "line_items": [{"description": "Surgery", "amount": 29850}, {"description": "Room", "amount": 12000}],
-             "total": 41850, "tax_id": "27AAACC1111A1Z5"})
+             "total": 41850, "tax_id": "27AAACC1111A1ZQ"})
 
 SUSPICIOUS = Claim(
     claim_id="CL-2", claimant_id="U002", claimant_name="R. Singh", hospital_id="H003", doctor_id="D002",

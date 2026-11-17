@@ -1,5 +1,5 @@
 from app.agents.base import Agent
-from app.data import store
+from app.db.repos import open_repos
 from app.models import Claim, DocumentInfo, Finding
 
 
@@ -9,7 +9,8 @@ class ClaimantProfileAgent(Agent):
 
     async def analyze(self, claim: Claim, documents: list[DocumentInfo]):
         f: list[Finding] = []
-        past = store.history(claim.claimant_id)
+        with open_repos() as repos:
+            past = repos.history(claim.claimant_id)
 
         recent = [c for c in past if 0 <= (claim.submitted_on - c["date"]).days <= 90]
         if len(recent) >= 2:
@@ -31,9 +32,6 @@ class ClaimantProfileAgent(Agent):
             if len(amounts) >= 3 and max(amounts) - min(amounts) < 0.1 * max(amounts):
                 f.append(Finding(code="REPEATED_SIMILAR_AMOUNTS", severity="medium",
                                  detail="Claim amounts are almost identical across claims."))
-            if any(c["invoice_number"] == claim.invoice.invoice_number for c in past):
-                f.append(Finding(code="REPEATED_INVOICE_NUMBER", severity="high",
-                                 detail="Claimant already used this invoice number."))
 
         stay = (claim.discharge_date - claim.admission_date).days
         if stay < 0:

@@ -5,27 +5,24 @@ The LLM never overrides the rule-based score beyond the capped contribution defi
 """
 import asyncio
 import json
-import os
 import time
 
 import httpx
 
-from app.config import load_env
 from app.models import AgentResult
-
-load_env()
+from app.settings import DEFAULT_GEMINI_MODELS, get_settings
 
 GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 
 
-DEFAULT_MODELS = "gemini-3.5-flash-lite,gemini-3-flash-preview,gemini-3.1-flash-lite"
-TIMEOUT_S = float(os.getenv("GEMINI_TIMEOUT_S", "20"))
+DEFAULT_MODELS = DEFAULT_GEMINI_MODELS
+TIMEOUT_S = get_settings().gemini_timeout_s
 RETRYABLE = {429, 500, 502, 503, 504}
 
 
 def gemini_models() -> list[str]:
     """GEMINI_MODEL may be one model or a comma-separated fallback chain."""
-    return [m.strip() for m in os.getenv("GEMINI_MODEL", DEFAULT_MODELS).split(",") if m.strip()]
+    return [m.strip() for m in get_settings().gemini_model.split(",") if m.strip()]
 
 
 def gemini_model() -> str:
@@ -33,7 +30,7 @@ def gemini_model() -> str:
 
 
 def enabled() -> bool:
-    return bool(os.getenv("GEMINI_API_KEY"))
+    return bool(get_settings().gemini_api_key)
 
 
 def generate(contents: list, system: str | None = None, tools: list | None = None,
@@ -55,7 +52,7 @@ def generate(contents: list, system: str | None = None, tools: list | None = Non
             time.sleep(1.5 * i)
         try:
             r = httpx.post(GEMINI_URL.format(model=m), json=body, timeout=TIMEOUT_S,
-                           headers={"x-goog-api-key": os.environ["GEMINI_API_KEY"]})
+                           headers={"x-goog-api-key": get_settings().gemini_api_key.get_secret_value()})
         except httpx.TimeoutException as e:
             last = e
             continue
@@ -125,9 +122,9 @@ def _template(claim_id, score, decision, results: list[AgentResult]) -> str:
 
 def _bedrock(prompt: str) -> str:
     import boto3
-    client = boto3.client("bedrock-runtime", region_name=os.getenv("AWS_REGION", "us-east-1"))
+    client = boto3.client("bedrock-runtime", region_name=get_settings().aws_region)
     resp = client.converse(
-        modelId=os.environ["BEDROCK_MODEL_ID"],
+        modelId=get_settings().bedrock_model_id,
         messages=[{"role": "user", "content": [{"text": prompt}]}],
         inferenceConfig={"maxTokens": 500, "temperature": 0.2},
     )
@@ -153,7 +150,7 @@ async def summarize(claim_id, score, decision, results: list[AgentResult], use_l
     try:
         if enabled():
             return await asyncio.to_thread(_gemini_text, prompt)
-        if os.getenv("BEDROCK_MODEL_ID"):
+        if get_settings().bedrock_model_id:
             return await asyncio.to_thread(_bedrock, prompt)
     except Exception:
         pass

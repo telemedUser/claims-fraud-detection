@@ -61,7 +61,7 @@ export default function PolicyStep({ state, update, showErrors }: StepProps) {
           <div className="flex items-start justify-between gap-4">
             <div>
               <div className="flex items-center gap-2 text-sm text-indigo-100">
-                <BadgeCheck className="size-4" aria-hidden /> Policy verified
+                <BadgeCheck className="size-4" aria-hidden /> Policy found
               </div>
               <div className="mt-1 text-2xl font-semibold">{p.plan}</div>
               <div className="text-sm text-indigo-100">{p.policy_number}</div>

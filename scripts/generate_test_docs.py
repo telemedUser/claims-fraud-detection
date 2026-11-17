@@ -14,7 +14,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from app import docgen  # noqa: E402
+from app.seed import docgen  # noqa: E402
 
 OUT = Path(__file__).resolve().parent.parent / "test_documents"
 

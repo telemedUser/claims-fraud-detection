@@ -1,71 +1,110 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react'
 import { Bot, ExternalLink, KeyRound, LayoutList, LogOut, RotateCcw, Workflow } from 'lucide-react'
-import { ApiError, internalApi, type InternalSummary, type Overview } from '../../api'
-import { Alert, Button, Card, Input, Logo } from '../../components/ui'
+import { ApiError, authApi, internalApi, setUnauthorizedHandler, tokenStore, type InternalSummary, type Me, type Overview } from '../../api'
+import { Alert, Button, Card, Field, Input, Logo } from '../../components/ui'
 import { cn } from '../../lib/utils'
 import WorkflowView from './WorkflowView'
 import AgentsView from './AgentsView'
 import ClaimsView from './ClaimsView'
 
-const KEY_STORAGE = 'claimshield.internal_key'
 type Tab = 'workflow' | 'agents' | 'claims'
 
+// Roles allowed to see each section (all four roles may read the console; reset is Administrator only).
+const ALL_ROLES: Me['role'][] = ['Investigator', 'Ops_Manager', 'Fraud_Team', 'Administrator']
+const TAB_ROLES: Record<Tab, Me['role'][]> = { workflow: ALL_ROLES, agents: ALL_ROLES, claims: ALL_ROLES }
+const ROLE_LABEL: Record<Me['role'], string> = {
+  Investigator: 'Investigator',
+  Ops_Manager: 'Ops manager',
+  Fraud_Team: 'Fraud team',
+  Administrator: 'Administrator',
+}
+
 export default function InternalPage() {
-  const [key, setKey] = useState(() => sessionStorage.getItem(KEY_STORAGE) ?? '')
+  const [me, setMe] = useState<Me | null>(null)
   const [overview, setOverview] = useState<Overview | null>(null)
   const [authError, setAuthError] = useState<string | null>(null)
-  const client = useMemo(() => internalApi(key), [key])
+  const [checking, setChecking] = useState(() => !!tokenStore.get())
+  const client = useMemo(() => internalApi(), [])
 
-  const signIn = useCallback(async (k: string) => {
+  const clearSession = useCallback((message: string | null) => {
+    tokenStore.clear()
+    setMe(null)
+    setOverview(null)
+    setAuthError(message)
+  }, [])
+
+  const load = useCallback(async () => {
     try {
-      const o = await internalApi(k).overview()
-      sessionStorage.setItem(KEY_STORAGE, k)
-      setKey(k)
+      const [m, o] = await Promise.all([authApi.me(), client.overview()])
+      setMe(m)
       setOverview(o)
       setAuthError(null)
     } catch (e) {
-      sessionStorage.removeItem(KEY_STORAGE)
-      setOverview(null)
-      setAuthError(e instanceof ApiError ? e.message : 'Sign-in failed')
+      if (e instanceof ApiError && e.status === 401) clearSession(null)
+      else if (e instanceof ApiError && e.status === 403) clearSession('Your role does not have access to the console.')
+      else clearSession(e instanceof ApiError ? e.message : 'Sign-in failed')
+    } finally {
+      setChecking(false)
     }
-  }, [])
+  }, [client, clearSession])
+
+  const signIn = useCallback(
+    async (username: string, password: string) => {
+      try {
+        await authApi.login(username, password)
+      } catch (e) {
+        setAuthError(e instanceof ApiError ? e.message : 'Sign-in failed')
+        return
+      }
+      await load()
+    },
+    [load],
+  )
 
   useEffect(() => {
-    if (key) signIn(key)
-    document.title = 'Fraud Intelligence Console · ClaimShield'
+    document.title = 'Fraud Intelligence Console � ClaimShield'
+    setUnauthorizedHandler(() => {
+      setMe(null)
+      setOverview(null)
+      setAuthError('Your session has expired. Please sign in again.')
+    })
+    if (tokenStore.get()) load()
+    return () => setUnauthorizedHandler(null)
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  if (!overview) return <KeyGate onSubmit={signIn} error={authError} />
-  return (
-    <Console
-      overview={overview}
-      client={client}
-      onSignOut={() => {
-        sessionStorage.removeItem(KEY_STORAGE)
-        setKey('')
-        setOverview(null)
-      }}
-    />
-  )
+  if (checking) return <div className="min-h-dvh bg-slate-950" aria-busy="true" />
+  if (!me || !overview) return <LoginGate onSubmit={signIn} error={authError} />
+  return <Console me={me} overview={overview} client={client} onSignOut={() => clearSession(null)} />
 }
 
-function KeyGate({ onSubmit, error }: { onSubmit: (k: string) => void; error: string | null }) {
-  const [value, setValue] = useState('')
-  const submit = (e: FormEvent) => {
+function LoginGate({ onSubmit, error }: { onSubmit: (u: string, p: string) => Promise<void>; error: string | null }) {
+  const [username, setUsername] = useState('')
+  const [password, setPassword] = useState('')
+  const [busy, setBusy] = useState(false)
+  const submit = async (e: FormEvent) => {
     e.preventDefault()
-    if (value.trim()) onSubmit(value.trim())
+    if (!username.trim() || !password) return
+    setBusy(true)
+    await onSubmit(username.trim(), password)
+    setBusy(false)
+    setPassword('')
   }
   return (
     <div className="grid min-h-dvh place-items-center bg-slate-950 px-4">
       <Card className="w-full max-w-sm p-6">
         <Logo subtitle="Fraud Intelligence Console" />
-        <h1 className="mt-6 text-lg font-semibold text-slate-900">Internal access</h1>
-        <p className="mt-1 text-sm text-slate-600">Enter the internal API key (INTERNAL_API_KEY in the server .env).</p>
+        <h1 className="mt-6 text-lg font-semibold text-slate-900">Staff sign-in</h1>
+        <p className="mt-1 text-sm text-slate-600">Sign in with your console username and password.</p>
         <form onSubmit={submit} className="mt-4 space-y-3">
-          <Input type="password" aria-label="Internal key" placeholder="Internal key" value={value} onChange={(e) => setValue(e.target.value)} autoFocus />
+          <Field label="Username" htmlFor="login-username">
+            <Input id="login-username" name="username" autoComplete="username" value={username} onChange={(e) => setUsername(e.target.value)} autoFocus />
+          </Field>
+          <Field label="Password" htmlFor="login-password">
+            <Input id="login-password" name="password" type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} />
+          </Field>
           {error && <Alert>{error}</Alert>}
-          <Button type="submit" className="w-full">
-            <KeyRound className="size-4" aria-hidden /> Unlock console
+          <Button type="submit" className="w-full" loading={busy}>
+            <KeyRound className="size-4" aria-hidden /> Sign in
           </Button>
         </form>
       </Card>
@@ -73,7 +112,7 @@ function KeyGate({ onSubmit, error }: { onSubmit: (k: string) => void; error: st
   )
 }
 
-function Console({ overview: initial, client, onSignOut }: { overview: Overview; client: ReturnType<typeof internalApi>; onSignOut: () => void }) {
+function Console({ me, overview: initial, client, onSignOut }: { me: Me; overview: Overview; client: ReturnType<typeof internalApi>; onSignOut: () => void }) {
   const [tab, setTab] = useState<Tab>('workflow')
   const [overview, setOverview] = useState(initial)
   const [claims, setClaims] = useState<InternalSummary[]>([])
@@ -110,11 +149,14 @@ function Console({ overview: initial, client, onSignOut }: { overview: Overview;
     setTab('claims')
   }
 
-  const tabs: { id: Tab; label: string; icon: typeof Workflow }[] = [
+  const allTabs: { id: Tab; label: string; icon: typeof Workflow }[] = [
     { id: 'workflow', label: 'Workflow', icon: Workflow },
     { id: 'agents', label: 'Agents', icon: Bot },
     { id: 'claims', label: `Claims (${claims.length})`, icon: LayoutList },
   ]
+  const tabs = allTabs.filter((t) => TAB_ROLES[t.id].includes(me.role))
+  const activeTab = tabs.some((t) => t.id === tab) ? tab : tabs[0]?.id
+  const canReset = me.role === 'Administrator'
 
   return (
     <div className="min-h-dvh bg-slate-100">
@@ -130,24 +172,25 @@ function Console({ overview: initial, client, onSignOut }: { overview: Overview;
             <a href="/?demo=1" target="_blank" rel="noreferrer">
               <Button variant="dark" size="sm"><ExternalLink className="size-3.5" aria-hidden /> Customer journey (demo)</Button>
             </a>
-            <Button variant="dark" size="sm" onClick={reset} loading={resetting}><RotateCcw className="size-3.5" aria-hidden /> Reset demo data</Button>
-            <Button variant="dark" size="sm" onClick={onSignOut} aria-label="Sign out"><LogOut className="size-3.5" aria-hidden /></Button>
+            <span className="rounded-full bg-slate-800 px-2.5 py-1 text-slate-200 ring-1 ring-slate-700" data-testid="whoami">{me.username} · {ROLE_LABEL[me.role]}</span>
+            {canReset && <Button variant="dark" size="sm" onClick={reset} loading={resetting}><RotateCcw className="size-3.5" aria-hidden /> Reset demo data</Button>}
+            <Button variant="dark" size="sm" onClick={onSignOut}><LogOut className="size-3.5" aria-hidden /> Sign out</Button>
           </div>
         </div>
         <nav className="mx-auto flex max-w-7xl gap-1 px-4 sm:px-6" aria-label="Console sections">
           {tabs.map((t) => (
-            <button key={t.id} type="button" onClick={() => setTab(t.id)} aria-current={tab === t.id ? 'page' : undefined}
+            <button key={t.id} type="button" onClick={() => setTab(t.id)} aria-current={activeTab === t.id ? 'page' : undefined}
               className={cn('flex items-center gap-2 rounded-t-xl px-4 py-2.5 text-sm font-medium transition',
-                tab === t.id ? 'bg-slate-100 text-slate-900' : 'text-slate-400 hover:text-white')}>
+                activeTab === t.id ? 'bg-slate-100 text-slate-900' : 'text-slate-400 hover:text-white')}>
               <t.icon className="size-4" aria-hidden /> {t.label}
             </button>
           ))}
         </nav>
       </header>
       <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6">
-        {tab === 'workflow' && <WorkflowView overview={overview} claims={claims} client={client} onOpenClaim={openClaim} />}
-        {tab === 'agents' && <AgentsView overview={overview} />}
-        {tab === 'claims' && (
+        {activeTab === 'workflow' && <WorkflowView overview={overview} claims={claims} client={client} onOpenClaim={openClaim} />}
+        {activeTab === 'agents' && <AgentsView overview={overview} />}
+        {activeTab === 'claims' && (
           <ClaimsView overview={overview} claims={claims} client={client} selected={selected} onSelect={setSelected} />
         )}
       </main>

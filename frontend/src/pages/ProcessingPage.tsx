@@ -68,7 +68,7 @@ export default function ProcessingPage() {
       <Card className="overflow-hidden">
         <div className="relative bg-gradient-to-br from-indigo-600 to-violet-700 px-6 pt-10 pb-8 text-center text-white">
           <Radar done={allRevealed} />
-          <h1 className="mt-6 text-2xl font-semibold">{allRevealed ? 'Verification complete' : 'Verifying your claim'}</h1>
+          <h1 className="mt-6 text-2xl font-semibold">{allRevealed ? 'Checks complete' : 'Checking your claim'}</h1>
           <p className="mt-1 text-sm text-indigo-100">
             Claim reference <span className="font-mono font-medium text-white">{claimId}</span>
           </p>

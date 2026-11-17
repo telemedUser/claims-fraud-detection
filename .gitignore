@@ -4,3 +4,9 @@ __pycache__/
 frontend/node_modules/
 frontend/dist/
 ui_screens/
+.hypothesis/
+.pytest_cache/
+*.log
+*.err
+*.db
+storage/

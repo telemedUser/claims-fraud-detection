@@ -58,7 +58,7 @@ export default function AgentsView({ overview }: { overview: Overview }) {
               ))}
             </div>
             <div className="mt-6 flex justify-between text-[11px] text-slate-600">
-              <span>Auto-approve</span><span>Manual review</span><span>Investigate</span>
+              <span>Low risk</span><span>Manual review</span><span>Investigate</span>
             </div>
           </div>
         </div>

@@ -10,7 +10,7 @@ A customer submits a health insurance claim. Four agents analyse it in parallel,
 | `/claims/{id}/processing` | Customer | Live loading page showing each verification step |
 | `/claims/{id}` | Customer | Claim report: outcome, neutral check status and next steps. No scores or findings |
 | `/?demo=1` | Demo | Same journey with "Genuine claim" / "Suspicious claim" buttons that prefill data and attach generated PDFs |
-| `/internal` | Internal | Fraud Intelligence Console: workflow, agent catalogue, every claim with full agent output. Not linked from the journey; requires `INTERNAL_API_KEY` from `.env` |
+| `/internal` | Internal | Fraud Intelligence Console: workflow, agent catalogue, every claim with full agent output. Not linked from the journey; requires a staff login (JWT, role-based; the login screen arrives with task 12.3) |
 | `/docs` | Developers | Swagger for the API |
 
 Demo policies (fictional): `POL-1001`, DOB `1992-04-18` (A. Kumar) and `POL-2002`, DOB `1985-09-02` (R. Singh).
@@ -26,8 +26,8 @@ Demo policies (fictional): `POL-1001`, DOB `1992-04-18` (A. Kumar) and `POL-2002
 
 Each agent runs its rules first. Gemini then reviews the claim with lookup tools (`get_hospital_profile`, `get_doctor_profile`, `get_claimant_history`, `get_document_metadata`, `get_disease_guidelines`, `get_policy_details`) and may add findings. LLM findings are capped at `medium` and add at most 25 points per agent. On any LLM error the agent keeps its rule result.
 
-- **Score:** `max(weighted average, 0.8 x highest agent)`, so one strong signal is not diluted.
-- **Decision:** `<30` auto-approve, `30-59` manual review, `>=60` investigate (`app/orchestrator.py`).
+- **Score:** additive and saturating: severity points x status multiplier summed over de-duplicated findings, capped at 100 (`app/core/scoring.py`, `app/rules/risk_scoring.v1.yaml`).
+- **Decision:** routing queue (a recommendation, not a decision): `<30` low risk, `30-59` manual review, `>=60` investigate (`app/pipeline.py`).
 - **Policy rules** are enforced before scoring, and violations return 422: hospital in network, condition covered, admission inside the policy period, claimed amount within sum insured.
 
 ## Configuration (`.env`, git-ignored)
@@ -35,8 +35,15 @@ Each agent runs its rules first. Gemini then reviews the claim with lookup tools
 ```
 GEMINI_API_KEY=...          # enables LLM review and summary
 GEMINI_MODEL=...            # optional comma-separated fallback chain
-INTERNAL_API_KEY=...        # unlocks /internal and /api/internal/*
+JWT_SECRET=...              # required: signs login tokens; the app refuses to start without it
+SEED_USER_PASSWORD=...      # seeds investigator / ops_manager / fraud_team / admin (or SEED_PASSWORD_<ROLE>)
+# Roles: /api/internal/* all four roles; /api/internal/reset Administrator; /api/assess Investigator, Fraud_Team, Administrator
 ```
+
+## Local login
+
+`POST /api/auth/login` (`{"username", "password"}`) returns a 30-minute bearer token; `GET /api/me` shows the caller. Set `JWT_SECRET` first (login returns 503 without it).
+The seed creates one user per role: `investigator`, `ops_manager`, `fraud_team`, `admin`. Passwords are never in code. Set `SEED_PASSWORD_INVESTIGATOR`, `SEED_PASSWORD_OPS_MANAGER`, `SEED_PASSWORD_FRAUD_TEAM`, `SEED_PASSWORD_ADMIN`, or one shared `SEED_USER_PASSWORD`, before seeding. For throwaway local use only, `DEV_SEED_DEFAULT_PASSWORDS=true` gives each user the password `dev-only-<username>-password`. Users with no configured password are not created. Seeding never overwrites an existing user.
 
 ## Run
 
@@ -62,7 +69,7 @@ Stack: FastAPI (Python) backend; React 19, TypeScript, Vite, Tailwind CSS v4, Re
 Data is in memory. Use **Reset demo data** in the console to clear claims and restore the seeded history.
 
 ## Extend
-- Real data: replace `app/data/store.py` with your registries, policy admin system and claims DB.
+- Real data: replace the seed in `app/seed/` (and the repositories in `app/db/repos.py`) with your registries, policy admin system and claims DB.
 - Jobs: replace `app/jobs.py` (in-memory) with a queue and a database.
 - Invoice OCR: extract bill fields from the uploaded documents (e.g. Amazon Textract) and compare them with what the customer entered.
-- New agent: subclass `Agent`, add it to `AGENTS` and `WEIGHTS` in `app/orchestrator.py` and to `app/catalog.py`.
+- New agent: subclass `Agent`, add it to `AGENTS` in `app/pipeline.py` and to `app/catalog.py`.

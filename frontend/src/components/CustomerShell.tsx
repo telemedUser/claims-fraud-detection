@@ -1,34 +1,42 @@
 import { Link, Outlet } from 'react-router'
-import { Headset, Lock } from 'lucide-react'
+import { Headset } from 'lucide-react'
 import { Logo } from './ui'
 
 export default function CustomerShell() {
   return (
-    <div className="flex min-h-dvh flex-col">
-      <header className="sticky top-0 z-20 border-b border-slate-200/70 bg-white/80 backdrop-blur print:hidden">
-        <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 sm:px-6">
+    <div className="flex min-h-dvh flex-col bg-white">
+      <header className="border-b border-slate-200 bg-white print:hidden">
+        <div className="mx-auto flex h-24 max-w-3xl items-center justify-between px-4 sm:px-6">
           <Link to="/" aria-label="ClaimShield home">
             <Logo />
           </Link>
-          <div className="flex items-center gap-5 text-sm text-slate-600">
-            <span className="hidden items-center gap-1.5 sm:flex">
-              <Lock className="size-4 text-emerald-600" aria-hidden /> Secure claim submission
-            </span>
-            <span className="flex items-center gap-1.5">
-              <Headset className="size-4 text-indigo-600" aria-hidden /> 1800-000-0000
-            </span>
-          </div>
+          <a
+            href="tel:18000000000"
+            className="inline-flex h-9 items-center gap-2 rounded-sm bg-white px-5 text-sm font-semibold text-indigo-700 ring-1 ring-inset ring-indigo-600 hover:bg-indigo-50"
+          >
+            <Headset className="size-4" aria-hidden /> Contact us
+          </a>
         </div>
       </header>
-      <main className="relative flex-1">
-        <div className="bg-grid pointer-events-none absolute inset-x-0 top-0 h-80 [mask-image:linear-gradient(to_bottom,black,transparent)] print:hidden" />
-        <div className="relative mx-auto max-w-6xl px-4 py-8 sm:px-6 sm:py-10">
+      <main className="flex-1">
+        <div className="mx-auto max-w-3xl px-4 py-8 sm:px-6 sm:py-10">
           <Outlet />
         </div>
       </main>
-      <footer className="border-t border-slate-200 bg-white py-6 text-center text-xs text-slate-500 print:hidden">
-        Assure Health Insurance (fictional demo) · Claims are checked by automated verification before settlement.
-      </footer>
+      <div className="print:hidden">
+        <div className="mx-auto max-w-3xl px-4 pb-8 sm:px-6">
+          <p className="bg-slate-100 px-5 py-4 text-sm text-slate-700">
+            If you have any questions about your claim, please call the claims helpline on <b>1800-000-0000</b>. Lines are open Monday to Friday 8am to 6pm.
+            Claims are received and checked by automated analysis before any decision.
+          </p>
+        </div>
+        <footer className="bg-indigo-900 py-8 text-white">
+          <div className="mx-auto flex max-w-3xl flex-col gap-4 px-4 sm:flex-row sm:items-center sm:gap-8 sm:px-6">
+            <Logo dark subtitle="" />
+            <p className="text-xs text-indigo-100">Assure Health Insurance (fictional demo) · Privacy and cookies · Accessibility · Legal notices</p>
+          </div>
+        </footer>
+      </div>
     </div>
   )
 }

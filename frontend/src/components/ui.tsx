@@ -10,18 +10,18 @@ type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
 
 export function Button({ variant = 'primary', size = 'md', loading, className, children, disabled, type = 'button', ...rest }: ButtonProps) {
   const v = {
-    primary: 'bg-indigo-600 text-white shadow-sm shadow-indigo-600/25 hover:bg-indigo-700',
-    secondary: 'bg-white text-slate-700 ring-1 ring-inset ring-slate-300 hover:bg-slate-50',
-    ghost: 'text-slate-600 hover:bg-slate-100',
+    primary: 'bg-indigo-600 text-white hover:bg-indigo-700',
+    secondary: 'bg-white text-indigo-700 ring-1 ring-inset ring-indigo-600 hover:bg-indigo-50',
+    ghost: 'text-indigo-700 hover:bg-indigo-50',
     danger: 'bg-rose-600 text-white hover:bg-rose-700',
     dark: 'bg-white/10 text-white ring-1 ring-inset ring-white/15 hover:bg-white/20',
   }[variant]
-  const s = { sm: 'h-8 px-3 text-sm', md: 'h-10 px-4 text-sm', lg: 'h-12 px-6 text-base' }[size]
+  const s = { sm: 'h-8 px-3 text-sm', md: 'h-10 px-7 text-sm', lg: 'h-12 px-8 text-base' }[size]
   return (
     <button
       type={type}
       className={cn(
-        'inline-flex items-center justify-center gap-2 rounded-xl font-medium transition-colors',
+        'inline-flex items-center justify-center gap-2 rounded-sm font-semibold transition-colors',
         'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600',
         'disabled:cursor-not-allowed disabled:opacity-50',
         v,
@@ -38,7 +38,7 @@ export function Button({ variant = 'primary', size = 'md', loading, className, c
 }
 
 export function Card({ className, children }: { className?: string; children: ReactNode }) {
-  return <div className={cn('rounded-2xl bg-white shadow-sm ring-1 ring-slate-200', className)}>{children}</div>
+  return <div className={cn('rounded-sm bg-white ring-1 ring-slate-200', className)}>{children}</div>
 }
 
 export function Field({
@@ -58,7 +58,7 @@ export function Field({
 }) {
   return (
     <div className={className}>
-      <label htmlFor={htmlFor} className="mb-1.5 block text-sm font-medium text-slate-700">
+      <label htmlFor={htmlFor} className="mb-1.5 block text-sm font-bold text-slate-700">
         {label}
       </label>
       {children}
@@ -78,9 +78,9 @@ export function Input({ className, invalid, ...rest }: InputHTMLAttributes<HTMLI
     <input
       aria-invalid={invalid || undefined}
       className={cn(
-        'block h-10 w-full rounded-xl border-0 bg-white px-3 text-sm text-slate-900 ring-1 ring-inset placeholder:text-slate-400',
+        'block h-10 w-full rounded-sm border-0 bg-white px-3 text-sm text-slate-900 ring-1 ring-inset placeholder:text-slate-400',
         'focus:outline-none focus:ring-2 focus:ring-inset disabled:bg-slate-50 disabled:text-slate-500',
-        invalid ? 'ring-rose-400 focus:ring-rose-500' : 'ring-slate-300 focus:ring-indigo-600',
+        invalid ? 'ring-rose-400 focus:ring-rose-500' : 'ring-slate-400 focus:ring-indigo-600',
         className,
       )}
       {...rest}
@@ -123,18 +123,17 @@ export function Alert({ tone = 'red', children, className }: { tone?: 'red' | 'a
 
 export function Logo({ dark = false, subtitle = 'by Assure Health' }: { dark?: boolean; subtitle?: string }) {
   return (
-    <div className="flex items-center gap-2.5">
-      <div className="grid size-9 place-items-center rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 shadow-md shadow-indigo-500/30">
-        <ShieldCheck className="size-5 text-white" aria-hidden />
+    <div className="flex items-center gap-3">
+      <div className={cn('grid size-12 place-items-center', dark ? 'bg-white' : 'bg-indigo-600')}>
+        <ShieldCheck className={cn('size-6', dark ? 'text-indigo-600' : 'text-white')} aria-hidden />
       </div>
       <div className="leading-tight">
-        <div className={cn('text-base font-semibold tracking-tight', dark ? 'text-white' : 'text-slate-900')}>ClaimShield</div>
-        <div className={cn('text-xs', dark ? 'text-slate-400' : 'text-slate-500')}>{subtitle}</div>
+        <div className={cn('text-base font-bold tracking-tight', dark ? 'text-white' : 'text-indigo-700')}>ClaimShield</div>
+        {subtitle && <div className={cn('text-xs', dark ? 'text-indigo-200' : 'text-slate-500')}>{subtitle}</div>}
       </div>
     </div>
   )
 }
-
 export function Spinner({ className }: { className?: string }) {
   return <LoaderCircle className={cn('size-5 animate-spin text-indigo-600', className)} aria-label="Loading" />
 }

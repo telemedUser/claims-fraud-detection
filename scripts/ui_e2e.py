@@ -12,10 +12,10 @@ from playwright.sync_api import expect, sync_playwright
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
-from app.config import load_env  # noqa: E402
 
-load_env()
 BASE = "http://127.0.0.1:8000"
+USERNAME = os.environ.get("E2E_USERNAME", "investigator")
+PASSWORD = os.environ.get("E2E_PASSWORD", "")
 OUT = ROOT / "ui_screens"
 OUT.mkdir(exist_ok=True)
 DOCS = ROOT / "test_documents" / "clean"
@@ -104,25 +104,19 @@ with sync_playwright() as p:
 
     # ---------------- internal console
     print("internal console")
-    page.goto(BASE + "/internal")
-    page.get_by_label("Internal key").fill("wrong-key")
-    page.get_by_role("button", name="Unlock console").click()
-    expect(page.get_by_text("Invalid internal key")).to_be_visible()
-    page.get_by_label("Internal key").fill(os.environ["INTERNAL_API_KEY"])
-    page.get_by_role("button", name="Unlock console").click()
-    expect(page.get_by_text("End-to-end claim workflow")).to_be_visible()
-    page.wait_for_timeout(1500)
-    shot(page, "09_internal_workflow")
-    page.get_by_role("button", name="Agents").click()
-    page.wait_for_timeout(500)
-    shot(page, "10_internal_agents")
-    page.get_by_role("button", name=re.compile(r"Claims \(")).click()
-    page.wait_for_timeout(500)
-    shot(page, "11_internal_claims")
-    page.locator("tbody tr").first.click()
-    expect(page.get_by_text("Agent responses")).to_be_visible()
-    page.wait_for_timeout(1200)
-    shot(page, "12_internal_claim_detail")
+    # TODO: drive the console login form (Username/Password fields, "Sign in" button, data-testid=whoami);
+    # for now verify the role-protected API.
+    bad = page.request.post(BASE + "/api/auth/login", data={"username": USERNAME, "password": "wrong-password"})
+    assert bad.status == 401, bad.status
+    assert page.request.get(BASE + "/api/internal/overview").status == 401
+    ok = page.request.post(BASE + "/api/auth/login", data={"username": USERNAME, "password": PASSWORD})
+    assert ok.status == 200, f"login failed ({ok.status}); set E2E_USERNAME / E2E_PASSWORD"
+    auth = {"Authorization": f"Bearer {ok.json()['access_token']}"}
+    claims_list = page.request.get(BASE + "/api/internal/claims", headers=auth)
+    assert claims_list.status == 200 and claims_list.json(), "internal claims list empty or forbidden"
+    detail = page.request.get(BASE + f"/api/internal/claims/{claims_list.json()[0]['claim_id']}", headers=auth)
+    assert detail.status == 200
+    print("  login + internal API ok as", USERNAME)
 
     print("console errors:", errors or "none")
     browser.close()

@@ -110,3 +110,8 @@ class FraudAssessment(BaseModel):
     agent_results: list[AgentResult]
     orchestration: Orchestration
     summary: str
+    # Routing recommendation only; `decision` is kept for the frontend (auto_approve = low-risk queue).
+    recommended_queue: Literal["low", "manual_review", "investigate"] = "low"
+    needs_human_review: bool = False
+    score_label: str = ""
+    claim_status: str = "ASSESSED"

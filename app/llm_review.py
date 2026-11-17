@@ -14,7 +14,7 @@ import re
 
 from app import llm
 from app.agents.base import SEVERITY_POINTS
-from app.data import store
+from app.db.repos import open_repos
 from app.models import AgentResult, Claim, DocumentInfo, Finding
 
 MAX_LLM_POINTS = 25
@@ -60,10 +60,12 @@ def _jsonable(o):
 
 
 def _doc_metadata(docs: list[DocumentInfo]) -> list[dict]:
+    with open_repos() as repos:
+        seen = repos.seen_doc_hashes(d.sha256 for d in docs)
     out = []
     for d in docs:
         item = {"filename": d.filename, "document_type": d.doc_type, "content_type": d.content_type, "size_bytes": d.size,
-                "sha256_seen_before": d.sha256 in store.SEEN_DOC_HASHES}
+                "sha256_seen_before": d.sha256 in seen}
         if d.content_type == "application/pdf":
             try:
                 from pypdf import PdfReader
@@ -77,17 +79,27 @@ def _doc_metadata(docs: list[DocumentInfo]) -> list[dict]:
 
 def _executors(claim: Claim, docs: list[DocumentInfo]) -> dict:
     return {
-        "get_hospital_profile": lambda hospital_id: _jsonable(store.hospital(hospital_id) or {"error": "not found"}),
-        "get_doctor_profile": lambda doctor_id: _jsonable(store.doctor(doctor_id) or {"error": "not found"}),
-        "get_claimant_history": lambda claimant_id: _jsonable(store.history(claimant_id)),
+        "get_hospital_profile": lambda hospital_id: _lookup("hospital", hospital_id),
+        "get_doctor_profile": lambda doctor_id: _lookup("doctor", doctor_id),
+        "get_claimant_history": lambda claimant_id: _lookup("history", claimant_id),
         "get_document_metadata": lambda: _doc_metadata(docs),
-        "get_disease_guidelines": lambda disease_id: _jsonable(store.disease(disease_id) or {"error": "not found"}),
+        "get_disease_guidelines": lambda disease_id: _lookup("disease", disease_id),
         "get_policy_details": lambda policy_number: _policy_view(policy_number),
     }
 
 
+def _lookup(method: str, key):
+    """Call one ``Repos`` lookup on its own session and return it JSON-safe."""
+    with open_repos() as repos:
+        found = getattr(repos, method)(key)
+    if method == "history":  # an empty history is a valid answer
+        return _jsonable(found)
+    return _jsonable(found or {"error": "not found"})
+
+
 def _policy_view(policy_number):
-    p = store.policy(policy_number)
+    with open_repos() as repos:
+        p = repos.policy(policy_number)
     if not p:
         return {"error": "not found"}
     return _jsonable({k: v for k, v in p.items() if k != "date_of_birth"})  # no PII the model doesn't need

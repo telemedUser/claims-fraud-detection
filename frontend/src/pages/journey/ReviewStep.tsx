@@ -14,7 +14,7 @@ export default function ReviewStep({ state, update, showErrors, goTo }: StepProp
 
   return (
     <div className="space-y-5">
-      <StepTitle title="Review and submit" subtitle="Check everything is correct. Once submitted, your claim is verified automatically." />
+      <StepTitle title="Review and submit" subtitle="Check everything is correct. Once submitted, your claim is received and checked automatically." />
 
       <Section title="Policy" onEdit={() => goTo?.(0)}>
         <Row k="Policyholder" v={p.holder_name} />

@@ -3,7 +3,7 @@ import { motion } from 'motion/react'
 import { ArrowLeft, Braces, ChartGantt, CircleCheck, CircleAlert, ExternalLink, FileText, MessageSquareText, Scale, Sparkles, UserRound, Wrench } from 'lucide-react'
 import type { AgentResult, InternalDetail, internalApi, JobEvent, Overview } from '../../api'
 import { Alert, Badge, Button, Spinner } from '../../components/ui'
-import { cn, DECISION_LABEL, DOC_LABEL, fileSize, fmtDate, inr, ms } from '../../lib/utils'
+import { CHECK_OUTCOME_LABEL, cn, DECISION_LABEL, DOC_LABEL, fileSize, fmtDate, inr, ms } from '../../lib/utils'
 import { AGENT_ICON, agentTitle, DECISION_TONE, Panel, RichText, ScoreBar, ScoreRing, SEVERITY_TONE, SourceTag } from './common'
 
 type Props = { id: string; overview: Overview; client: ReturnType<typeof internalApi>; onBack: () => void }
@@ -103,9 +103,9 @@ export default function ClaimDetail({ id, overview, client, onBack }: Props) {
                   {d.customer_view.report.checks.map((c) => (
                     <li key={c.label} className="flex items-center justify-between">
                       <span className="text-slate-700">{c.label}</span>
-                      {c.outcome === 'verified'
-                        ? <span className="flex items-center gap-1 text-emerald-700"><CircleCheck className="size-4" aria-hidden /> Verified</span>
-                        : <span className="flex items-center gap-1 text-amber-700"><CircleAlert className="size-4" aria-hidden /> Further review</span>}
+                      {c.outcome === 'no_issues'
+                        ? <span className="flex items-center gap-1 text-emerald-700"><CircleCheck className="size-4" aria-hidden /> {CHECK_OUTCOME_LABEL.no_issues}</span>
+                        : <span className="flex items-center gap-1 text-amber-700"><CircleAlert className="size-4" aria-hidden /> {CHECK_OUTCOME_LABEL[c.outcome]}</span>}
                     </li>
                   ))}
                 </ul>

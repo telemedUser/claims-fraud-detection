@@ -33,7 +33,7 @@ export type Stage = { key: string; label: string; status: StageStatus; ai_review
 export type OutcomeCode = 'approved' | 'under_review' | 'verification'
 export type CustomerReport = {
   outcome: { code: OutcomeCode; title: string; message: string; next_steps: string[] }
-  checks: { label: string; outcome: 'verified' | 'needs_review' }[]
+  checks: { label: string; outcome: 'no_issues' | 'unavailable' | 'simulated' }[]
   claim: {
     claim_id: string
     policy_number: string | null
@@ -176,7 +176,8 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     body = text
   }
   if (!res.ok) {
-    const detail = body && typeof body === 'object' && 'detail' in body ? (body as { detail: unknown }).detail : null
+    const b = body && typeof body === 'object' ? (body as { error?: { message?: unknown }; detail?: unknown }) : null
+    const detail = typeof b?.error?.message === 'string' ? b.error.message : b?.detail
     throw new ApiError(res.status, typeof detail === 'string' ? detail : 'Something went wrong. Please try again.')
   }
   return body as T
@@ -211,12 +212,51 @@ export const api = {
   },
 }
 
-export const internalApi = (key: string) => {
-  const headers = { 'X-Internal-Key': key }
-  return {
-    overview: () => request<Overview>('/api/internal/overview', { headers }),
-    claims: () => request<InternalSummary[]>('/api/internal/claims', { headers }),
-    claim: (id: string) => request<InternalDetail>(`/api/internal/claims/${encodeURIComponent(id)}`, { headers }),
-    reset: () => request<{ status: string }>('/api/internal/reset', { method: 'POST', headers }),
+// ---------------------------------------------------------------- auth (Bearer token, sessionStorage only)
+
+export type Role = 'Investigator' | 'Ops_Manager' | 'Fraud_Team' | 'Administrator'
+export type Me = { id: string; username: string; role: Role }
+
+const TOKEN_KEY = 'claimshield.access_token'
+export const tokenStore = {
+  get: () => sessionStorage.getItem(TOKEN_KEY),
+  set: (t: string) => sessionStorage.setItem(TOKEN_KEY, t),
+  clear: () => sessionStorage.removeItem(TOKEN_KEY),
+}
+
+let onUnauthorized: (() => void) | null = null
+/** Register a callback fired after a 401 on an authenticated call (the token is already cleared). */
+export const setUnauthorizedHandler = (fn: (() => void) | null) => {
+  onUnauthorized = fn
+}
+
+async function authed<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const token = tokenStore.get()
+  const headers = { ...(init.headers as Record<string, string> | undefined), ...(token ? { Authorization: `Bearer ${token}` } : {}) }
+  try {
+    return await request<T>(path, { ...init, headers })
+  } catch (e) {
+    if (e instanceof ApiError && e.status === 401) {
+      tokenStore.clear()
+      onUnauthorized?.()
+    }
+    throw e
   }
 }
+
+export const authApi = {
+  login: async (username: string, password: string) => {
+    const r = await request<{ access_token: string; token_type: string; expires_in?: number; role: Role }>('/api/auth/login', json({ username, password }))
+    tokenStore.set(r.access_token)
+    return r
+  },
+  me: () => authed<Me>('/api/me'),
+  logout: () => tokenStore.clear(),
+}
+
+export const internalApi = () => ({
+  overview: () => authed<Overview>('/api/internal/overview'),
+  claims: () => authed<InternalSummary[]>('/api/internal/claims'),
+  claim: (id: string) => authed<InternalDetail>(`/api/internal/claims/${encodeURIComponent(id)}`),
+  reset: () => authed<{ status: string }>('/api/internal/reset', { method: 'POST' }),
+})

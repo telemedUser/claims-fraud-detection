@@ -33,7 +33,7 @@ export const scoreTone = (s: number | null | undefined) =>
   s == null ? 'slate' : s >= 60 ? 'red' : s >= 30 ? 'amber' : 'green'
 
 export const DECISION_LABEL: Record<string, string> = {
-  auto_approve: 'Auto-approve',
+  auto_approve: 'Low risk',
   manual_review: 'Manual review',
   investigate: 'Investigate',
 }
@@ -44,3 +44,10 @@ export const DOC_LABEL: Record<string, string> = {
   prescription: 'Prescription',
   other: 'Other document',
 }
+
+export const CHECK_OUTCOME_LABEL = {
+  no_issues: 'No issues found',
+  unavailable: 'Verification unavailable',
+  simulated: 'SIMULATED',
+} as const
+

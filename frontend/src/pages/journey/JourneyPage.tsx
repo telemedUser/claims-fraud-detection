@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router'
 import { AnimatePresence, motion } from 'motion/react'
-import { ArrowLeft, ArrowRight, Check, FlaskConical, Send } from 'lucide-react'
+import { ArrowLeft, ArrowRight, FlaskConical, Send } from 'lucide-react'
 import { api, ApiError } from '../../api'
 import { Alert, Button, Card } from '../../components/ui'
 import { cn, uid } from '../../lib/utils'
@@ -97,8 +97,7 @@ export default function JourneyPage() {
   return (
     <div className="mx-auto max-w-4xl">
       <div className="mb-8">
-        <p className="text-sm font-medium text-indigo-600">Health insurance claim</p>
-        <h1 className="mt-1 text-3xl font-semibold tracking-tight text-slate-900 sm:text-4xl">Submit a reimbursement claim</h1>
+        <h1 className="text-3xl font-bold tracking-tight text-indigo-600">Submit a reimbursement claim</h1>
         <p className="mt-2 max-w-2xl text-slate-600">
           Takes about 5 minutes. Keep your policy number, hospital bill and discharge summary handy.
         </p>
@@ -125,7 +124,7 @@ export default function JourneyPage() {
 
       <Stepper step={step} onSelect={(i) => i < step && goTo(i)} />
 
-      <Card className="mt-6 overflow-hidden">
+      <Card className="mt-6 overflow-hidden border-0 ring-0">
         <AnimatePresence mode="wait">
           <motion.div
             key={step}
@@ -133,25 +132,25 @@ export default function JourneyPage() {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -8 }}
             transition={{ duration: 0.2 }}
-            className="p-5 sm:p-8"
+            className="py-5 sm:py-6"
           >
             <StepView state={state} update={update} showErrors={showErrors} goTo={goTo} />
           </motion.div>
         </AnimatePresence>
 
         {error && (
-          <div className="px-5 pb-2 sm:px-8">
+          <div className="pb-2">
             <Alert>{error}</Alert>
           </div>
         )}
 
-        <div className="flex items-center justify-between gap-3 border-t border-slate-100 bg-slate-50/60 px-5 py-4 sm:px-8">
-          <Button variant="ghost" onClick={() => goTo(step - 1)} disabled={step === 0 || submitting}>
+        <div className="flex items-center justify-between gap-3 py-6">
+          <Button variant="secondary" onClick={() => goTo(step - 1)} disabled={step === 0 || submitting}>
             <ArrowLeft className="size-4" aria-hidden /> Back
           </Button>
           {step < STEPS.length - 1 ? (
             <Button onClick={next}>
-              Continue <ArrowRight className="size-4" aria-hidden />
+              Next <ArrowRight className="size-4" aria-hidden />
             </Button>
           ) : (
             <Button onClick={submit} loading={submitting} size="lg">
@@ -167,48 +166,31 @@ export default function JourneyPage() {
 function Stepper({ step, onSelect }: { step: number; onSelect: (i: number) => void }) {
   return (
     <nav aria-label="Progress">
-      <ol className="flex items-center gap-2">
+      <ol className="flex overflow-x-auto bg-slate-100 text-sm">
         {STEPS.map((label, i) => {
           const done = i < step
           const current = i === step
           return (
-            <li key={label} className="flex flex-1 items-center gap-2">
+            <li key={label} className="flex">
               <button
                 type="button"
                 onClick={() => onSelect(i)}
                 disabled={!done}
                 aria-current={current ? 'step' : undefined}
-                className={cn('group flex min-w-0 items-center gap-2', done && 'cursor-pointer')}
+                className={cn(
+                  'flex h-10 items-center gap-1.5 px-4 font-semibold whitespace-nowrap',
+                  current && 'bg-indigo-600 text-white',
+                  done && 'cursor-pointer text-indigo-700 hover:underline',
+                  !done && !current && 'text-slate-600',
+                )}
               >
-                <span
-                  className={cn(
-                    'grid size-8 shrink-0 place-items-center rounded-full text-sm font-semibold transition-colors',
-                    done && 'bg-indigo-600 text-white group-hover:bg-indigo-700',
-                    current && 'bg-white text-indigo-700 ring-2 ring-indigo-600',
-                    !done && !current && 'bg-white text-slate-400 ring-1 ring-slate-300',
-                  )}
-                >
-                  {done ? <Check className="size-4" aria-hidden /> : i + 1}
-                </span>
-                <span
-                  className={cn(
-                    'hidden truncate text-sm font-medium md:block',
-                    current ? 'text-slate-900' : done ? 'text-slate-700' : 'text-slate-400',
-                  )}
-                >
-                  {label}
-                </span>
+                <span>{i + 1}</span>
+                {label}
               </button>
-              {i < STEPS.length - 1 && (
-                <span className={cn('h-0.5 flex-1 rounded-full', i < step ? 'bg-indigo-600' : 'bg-slate-200')} aria-hidden />
-              )}
             </li>
           )
         })}
       </ol>
-      <p className="mt-3 text-sm text-slate-500 md:hidden">
-        Step {step + 1} of {STEPS.length}: <span className="font-medium text-slate-800">{STEPS[step]}</span>
-      </p>
     </nav>
   )
 }

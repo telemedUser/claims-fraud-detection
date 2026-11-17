@@ -110,9 +110,9 @@ export default function WorkflowView({ overview, claims, client, onOpenClaim }: 
           </div>
           <Arrow />
           <Node step="4" title="Scoring & decision" icon={<Scale className="size-4" />} tone="amber">
-            <p className="text-[11px] leading-relaxed text-slate-600">max(weighted average, {Math.round(0.8 * 100)}% of highest agent)</p>
+            <p className="text-[11px] leading-relaxed text-slate-600">sum of severity points x status multiplier, capped at 100</p>
             <div className="mt-2 space-y-1 text-[11px]">
-              <div className="flex justify-between"><Badge tone="green">Auto-approve</Badge><span>&lt; {t.manual_review_at}</span></div>
+              <div className="flex justify-between"><Badge tone="green">Low risk</Badge><span>&lt; {t.manual_review_at}</span></div>
               <div className="flex justify-between"><Badge tone="amber">Manual review</Badge><span>{t.manual_review_at}–{t.investigate_at - 1}</span></div>
               <div className="flex justify-between"><Badge tone="red">Investigate</Badge><span>≥ {t.investigate_at}</span></div>
             </div>

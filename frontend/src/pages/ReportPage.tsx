@@ -4,12 +4,12 @@ import { motion } from 'motion/react'
 import { CircleAlert, CircleCheck, Clock, FileText, Plus, Printer, SearchCheck, ShieldAlert } from 'lucide-react'
 import { api, ApiError, type OutcomeCode, type StatusResponse } from '../api'
 import { Alert, Button, Card, Spinner } from '../components/ui'
-import { cn, DOC_LABEL, fmtDate, fmtDateTime, inr } from '../lib/utils'
+import { CHECK_OUTCOME_LABEL, cn, DOC_LABEL, fmtDate, fmtDateTime, inr } from '../lib/utils'
 
 const OUTCOME_STYLE: Record<OutcomeCode, { wrap: string; icon: ReactNode; chip: string }> = {
-  approved: { wrap: 'from-emerald-500 to-teal-600', icon: <CircleCheck className="size-8" aria-hidden />, chip: 'Approved' },
-  under_review: { wrap: 'from-amber-500 to-orange-500', icon: <Clock className="size-8" aria-hidden />, chip: 'Under review' },
-  verification: { wrap: 'from-rose-500 to-pink-600', icon: <ShieldAlert className="size-8" aria-hidden />, chip: 'Verification' },
+  approved: { wrap: 'from-emerald-500 to-teal-600', icon: <CircleCheck className="size-8" aria-hidden />, chip: 'Received' },
+  under_review: { wrap: 'from-amber-500 to-orange-500', icon: <Clock className="size-8" aria-hidden />, chip: 'Received, under review' },
+  verification: { wrap: 'from-rose-500 to-pink-600', icon: <ShieldAlert className="size-8" aria-hidden />, chip: 'Received, more information may be needed' },
 }
 
 export default function ReportPage() {
@@ -83,17 +83,17 @@ export default function ReportPage() {
         <div className="space-y-6">
           <Card className="p-6">
             <h2 className="flex items-center gap-2 font-semibold text-slate-900">
-              <SearchCheck className="size-4 text-indigo-600" aria-hidden /> Verification checks
+              <SearchCheck className="size-4 text-indigo-600" aria-hidden /> Automated checks
             </h2>
             <ul className="mt-4 space-y-3">
               {r.checks.map((ch, i) => (
                 <motion.li key={ch.label} initial={{ opacity: 0, x: 8 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.1 + i * 0.08 }}
                   className="flex items-center justify-between gap-3 text-sm">
                   <span className="text-slate-700">{ch.label}</span>
-                  {ch.outcome === 'verified' ? (
-                    <span className="flex items-center gap-1 font-medium text-emerald-700"><CircleCheck className="size-4" aria-hidden /> Verified</span>
+                  {ch.outcome === 'no_issues' ? (
+                    <span className="flex items-center gap-1 font-medium text-slate-700"><CircleCheck className="size-4" aria-hidden /> {CHECK_OUTCOME_LABEL.no_issues}</span>
                   ) : (
-                    <span className="flex shrink-0 items-center gap-1 font-medium whitespace-nowrap text-amber-700"><CircleAlert className="size-4" aria-hidden /> Further review</span>
+                    <span className="flex shrink-0 items-center gap-1 font-medium whitespace-nowrap text-amber-700"><CircleAlert className="size-4" aria-hidden /> {CHECK_OUTCOME_LABEL[ch.outcome]}</span>
                   )}
                 </motion.li>
               ))}

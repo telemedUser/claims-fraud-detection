@@ -1,9 +1,10 @@
 """Generates fictional test documents (medical bill, prescription, medical report) for demo cases.
 
 Every page carries a "SAMPLE - TEST DATA ONLY" watermark. All people, hospitals and IDs are fictional
-and come from the seeded data in app/data/store.py. Dates are relative to `today` so cases always fall
+and come from the seeded data in app/seed/seed_data.py. Dates are relative to `today` so cases always fall
 inside the demo policies' validity windows.
 """
+import copy
 import io
 import uuid
 from datetime import date, timedelta
@@ -15,7 +16,7 @@ from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table
 
-from app.data import store
+from app.seed import seed_data as sd
 
 DOC_TYPES = ("medical_bill", "prescription", "medical_report")
 
@@ -42,7 +43,7 @@ def build_case(kind: str, today: date | None = None) -> dict:
         case = {
             "policy_number": "POL-1001", "hospital_id": "H001", "doctor_id": "D001", "disease_id": "appendicitis",
             "admission": adm, "discharge": dis, "bill_date": dis, "rx_date": dis,
-            "invoice_number": f"INV-{uid}", "bill_tax_id": store.hospital("H001")["tax_id"],
+            "invoice_number": f"INV-{uid}", "bill_tax_id": sd.HOSPITALS["H001"]["tax_id"],
             "items": [(f"Room charges - semi-private ({(dis - adm).days} days x 3,000)", (dis - adm).days, 3000),
                       ("Laparoscopic appendectomy (surgeon + OT)", 1, 22000),
                       ("Anaesthesia charges", 1, 4500),
@@ -88,16 +89,73 @@ def build_case(kind: str, today: date | None = None) -> dict:
                      "/CreationDate": _pdfdate(today - timedelta(days=320), "100000"),
                      "/ModDate": _pdfdate(today - timedelta(days=6), "223000")},
         }
+    elif kind in DEMO_KINDS:
+        return _demo_case(kind, today)
     else:
         raise ValueError(f"unknown case {kind}")
+    return _finish(case)
 
-    pol = store.policy(case["policy_number"])
-    case["policy"] = pol
-    case["hospital"] = store.hospital(case["hospital_id"])
-    case["doctor"] = store.doctor(case["doctor_id"])
-    case["disease"] = store.disease(case["disease_id"])
+
+def _finish(case: dict) -> dict:
+    """Attach the reference records and totals derived from the case ids."""
+    case["policy"] = copy.deepcopy(sd.POLICIES.get(case["policy_number"]))
+    case["hospital"] = copy.deepcopy(sd.HOSPITALS.get(case["hospital_id"]))
+    case["doctor"] = copy.deepcopy(sd.DOCTORS.get(case["doctor_id"]))
+    case["disease"] = copy.deepcopy(sd.DISEASES.get(case["disease_id"]))
     case["bill_total"] = sum(q * r for _, q, r in case["items"])
+    case.setdefault("doc_types", DOC_TYPES)
+    case.setdefault("preauth_amount", None)
     return case
+
+
+# Demo scenarios of Requirement 1.4 (besides "clean"). Invoice numbers are fixed so seeding is repeatable.
+DEMO_KINDS = ("high_risk", "fabricated", "borderline")
+INVALID_DEMO_GSTIN = "27AAACS2222B1Z9"  # right shape, wrong check character
+
+
+def _demo_case(kind: str, today: date) -> dict:
+    if kind == "high_risk":
+        # duplicate invoice (INV-2002 already used at H002) + invalid GSTIN + 14-day stay for viral fever;
+        # Dr. Mehta at H002 carries the provider volume surge.
+        case = build_case("suspicious", today)
+        adm = today - timedelta(days=25)
+        case.update(admission=adm, discharge=adm + timedelta(days=14), rx_date=adm + timedelta(days=14),
+                    bill_tax_id=INVALID_DEMO_GSTIN)
+        case["bill_date"] = case["discharge"]
+        return _finish(case)
+    case = build_case("clean", today)
+    if kind == "fabricated":
+        # AI/editor-looking bill: round total, editor producer metadata created and modified the same minute,
+        # and a doctor who is not in any register.
+        adm = today - timedelta(days=12)
+        dis = adm + timedelta(days=2)
+        case.update(
+            policy_number="POL-1001", hospital_id="H004", doctor_id="D008", disease_id="kidney_stone",
+            admission=adm, discharge=dis, bill_date=dis, rx_date=dis, invoice_number="INV-DEMO-FAB",
+            bill_tax_id=sd.HOSPITALS["H004"]["tax_id"],
+            items=[("Lithotripsy treatment package (all inclusive)", 1, 100000)], claimed_amount=100000,
+            meta={"/Producer": "Canva", "/Creator": "Canva",
+                  "/CreationDate": _pdfdate(dis, "101000"), "/ModDate": _pdfdate(dis, "101100")})
+        return _finish(case)
+    # borderline: no discharge summary and the claim exceeds the pre-authorised amount
+    # TODO(19.2): the pre-auth overrun is only stored (claims.preauth_amount); Billing_Intelligence will check it
+    # later. Until then the routing comes from MISSING_MEDICAL_REPORT, AMOUNT_SPIKE and AMOUNT_OUTLIER_FOR_HOSPITAL.
+    adm = today - timedelta(days=20)
+    dis = adm + timedelta(days=5)
+    items = [("Room charges - semi-private (5 days x 4,000)", 5, 4000), ("Pneumonia treatment and monitoring", 1, 26000),
+             ("Laboratory and imaging (CBC, chest X-ray, CT)", 1, 9400), ("Pharmacy - inpatient medicines", 1, 13000)]
+    case.update(
+        policy_number="POL-1001", hospital_id="H005", doctor_id="D006", disease_id="pneumonia",
+        admission=adm, discharge=dis, bill_date=dis, rx_date=dis, invoice_number="INV-DEMO-BORDER",
+        bill_tax_id=sd.HOSPITALS["H005"]["tax_id"], items=items, claimed_amount=68400,
+        preauth_amount=50000, doc_types=("medical_bill", "prescription"),
+        complaints="Cough with fever for 4 days and breathlessness.",
+        findings="Right lower zone crepitations. Chest X-ray: consolidation.",
+        rx=[("Tab. Azithromycin 500 mg", "1 tablet", "Once daily", "5 days"),
+            ("Tab. Paracetamol 650 mg", "1 tablet", "Three times daily if fever", "5 days")],
+        meta={"/Producer": "GVMC Hospital Information System v2.1", "/Creator": "GVMC HIS Billing",
+              "/CreationDate": _pdfdate(dis), "/ModDate": _pdfdate(dis)})
+    return _finish(case)
 
 
 def form_payload(case: dict) -> dict:

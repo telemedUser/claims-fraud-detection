@@ -1,5 +1,5 @@
 from app.agents.base import Agent
-from app.data import store
+from app.db.repos import open_repos
 from app.models import Claim, DocumentInfo, Finding
 
 
@@ -9,8 +9,9 @@ class ProviderProfileAgent(Agent):
 
     async def analyze(self, claim: Claim, documents: list[DocumentInfo]):
         f: list[Finding] = []
-        h = store.hospital(claim.hospital_id)
-        d = store.doctor(claim.doctor_id)
+        with open_repos() as repos:
+            h = repos.hospital(claim.hospital_id)
+            d = repos.doctor(claim.doctor_id)
 
         if not h:
             f.append(Finding(code="HOSPITAL_UNKNOWN", severity="high", detail="Hospital not found in registry."))

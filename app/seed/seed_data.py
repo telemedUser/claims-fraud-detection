@@ -1,36 +1,43 @@
-"""In-memory data store seeded with fictional sample data.
+"""Fictional seed data: hospitals, doctors, diseases, policies, claim history and the demo scenarios.
 
-Replace with real registries / a claims database in production. Agents and the API only use the
-functions below, so swapping the backend does not touch agent code. `reset()` restores the seed.
+Single source of truth. ``app/seed/run.py`` (database seeding), ``app/seed/docgen.py`` (demo documents) and
+the disease catalogue in ``app/db/repos.py`` read from here. Plain data only: no imports from the rest of the
+app, so it can be loaded anywhere.
+
+All GSTINs carry a valid mod-36 check character (see ``app/core/validators/gstin.py``).
 """
-import copy
 from datetime import date
 
-_HOSPITALS = {
+HOSPITALS = {
     "H001": {"name": "City General Hospital", "city": "Pune", "address": "12 MG Road, Pune, Maharashtra 411001",
-             "phone": "+91 20 5555 0101", "registered": True, "tax_id": "27AAACC1111A1Z5",
+             "phone": "+91 20 5555 0101", "registered": True, "tax_id": "27AAACC1111A1ZQ",
              "specialties": ["General Surgery", "General Medicine", "Orthopaedics"],
-             "avg_claim": 45000, "std_claim": 15000, "flagged_claims_ratio": 0.02, "years_active": 18},
+             "avg_claim": 45000, "std_claim": 15000, "flagged_claims_ratio": 0.02, "years_active": 18,
+             "baseline_monthly_claims": 40},
     "H002": {"name": "Sunrise Care Clinic", "city": "Nagpur", "address": "88 Wardha Road, Nagpur, Maharashtra 440015",
-             "phone": "+91 712 555 0202", "registered": True, "tax_id": "27AAACS2222B1Z9",
+             "phone": "+91 712 555 0202", "registered": True, "tax_id": "27AAACS2222B1Z2",
              "specialties": ["General Medicine"],
-             "avg_claim": 30000, "std_claim": 9000, "flagged_claims_ratio": 0.31, "years_active": 1},
+             "avg_claim": 30000, "std_claim": 9000, "flagged_claims_ratio": 0.31, "years_active": 1,
+             "baseline_monthly_claims": 6},
     "H003": {"name": "Unlicensed Health Point", "city": "Nagpur", "address": "Shop 4, Station Road, Nagpur 440001",
              "phone": "+91 98 0000 0000", "registered": False, "tax_id": None, "specialties": [],
-             "avg_claim": 20000, "std_claim": 5000, "flagged_claims_ratio": 0.55, "years_active": 0},
+             "avg_claim": 20000, "std_claim": 5000, "flagged_claims_ratio": 0.55, "years_active": 0,
+             "baseline_monthly_claims": 3},
     "H004": {"name": "Lakeview Multispeciality Hospital", "city": "Mumbai",
              "address": "3 Powai Lake Road, Mumbai, Maharashtra 400076", "phone": "+91 22 5555 0404",
-             "registered": True, "tax_id": "27AAACL4444D1Z2",
+             "registered": True, "tax_id": "27AAACL4444D1ZT",
              "specialties": ["General Medicine", "Orthopaedics", "Ophthalmology", "Urology"],
-             "avg_claim": 60000, "std_claim": 20000, "flagged_claims_ratio": 0.03, "years_active": 12},
+             "avg_claim": 60000, "std_claim": 20000, "flagged_claims_ratio": 0.03, "years_active": 12,
+             "baseline_monthly_claims": 55},
     "H005": {"name": "Green Valley Medical Centre", "city": "Bengaluru",
              "address": "21 Indiranagar 100ft Road, Bengaluru, Karnataka 560038", "phone": "+91 80 5555 0505",
-             "registered": True, "tax_id": "29AAACG5555E1Z7",
+             "registered": True, "tax_id": "29AAACG5555E1ZM",
              "specialties": ["General Medicine", "Pulmonology", "Ophthalmology"],
-             "avg_claim": 35000, "std_claim": 12000, "flagged_claims_ratio": 0.04, "years_active": 9},
+             "avg_claim": 35000, "std_claim": 12000, "flagged_claims_ratio": 0.04, "years_active": 9,
+             "baseline_monthly_claims": 30},
 }
 
-_DOCTORS = {
+DOCTORS = {
     "D001": {"name": "Dr. Asha Rao", "qualification": "MBBS, MS (General Surgery)", "registration_no": "MMC-2009-11872",
              "specialty": "General Surgery", "license_valid": True, "hospital_ids": ["H001"],
              "claims_per_month": 40, "flagged_claims_ratio": 0.01},
@@ -51,6 +58,10 @@ _DOCTORS = {
     "D007": {"name": "Dr. Arjun Menon", "qualification": "MBBS, MS (Ophthalmology)", "registration_no": "KMC-2014-61877",
              "specialty": "Ophthalmology", "license_valid": True, "hospital_ids": ["H005", "H004"],
              "claims_per_month": 52, "flagged_claims_ratio": 0.02},
+    # Invented doctor used by the fabricated-looking demo bill: no registration, not licensed.
+    "D008": {"name": "Dr. R. Sharma", "qualification": "MBBS", "registration_no": None,
+             "specialty": "Urology", "license_valid": False, "hospital_ids": ["H004"],
+             "claims_per_month": 2, "flagged_claims_ratio": 0.0},
 }
 
 # Disease catalogue with typical cost and stay, used for coverage and plausibility checks.
@@ -66,7 +77,7 @@ DISEASES = {
     "dental": {"name": "Dental treatment (outpatient)", "category": "Dental", "typical_cost": [2000, 40000], "typical_stay_days": [0, 0]},
 }
 
-_POLICIES = {
+POLICIES = {
     "POL-1001": {"holder_name": "A. Kumar", "claimant_id": "U001", "date_of_birth": "1992-04-18", "plan": "Family Floater Gold",
                  "sum_insured": 500000, "valid_from": "2026-01-01", "valid_to": "2026-12-31",
                  "network_hospital_ids": ["H001", "H004", "H005"],
@@ -78,7 +89,7 @@ _POLICIES = {
 }
 
 # claimant_id -> past claims
-_CLAIM_HISTORY = {
+CLAIM_HISTORY = {
     "U001": [
         {"claim_id": "C-100", "date": date(2026, 1, 10), "amount": 18000, "hospital_id": "H001", "invoice_number": "INV-1001"},
     ],
@@ -90,61 +101,20 @@ _CLAIM_HISTORY = {
 }
 
 # invoice numbers already seen, per hospital (duplicate detection)
-_SEEN_INVOICES = {("H001", "INV-1001"), ("H002", "INV-2001"), ("H002", "INV-2002"), ("H003", "INV-2003")}
+SEEN_INVOICES = {("H001", "INV-1001"), ("H002", "INV-2001"), ("H002", "INV-2002"), ("H003", "INV-2003")}
 
-HOSPITALS: dict = {}
-DOCTORS: dict = {}
-POLICIES: dict = {}
-CLAIM_HISTORY: dict = {}
-SEEN_INVOICES: set = set()
-SEEN_DOC_HASHES: set[str] = set()  # document hashes already submitted (reused documents)
+# Number of recent minimal claims seeded at H002 so its monthly volume far exceeds its baseline (6).
+SURGE_CLAIMS_AT_H002 = 30
 
-
-def reset() -> None:
-    """Restores the seed data in place (other modules hold references to these objects)."""
-    for live, seed in ((HOSPITALS, _HOSPITALS), (DOCTORS, _DOCTORS), (POLICIES, _POLICIES), (CLAIM_HISTORY, _CLAIM_HISTORY)):
-        live.clear()
-        live.update(copy.deepcopy(seed))
-    SEEN_INVOICES.clear()
-    SEEN_INVOICES.update(_SEEN_INVOICES)
-    SEEN_DOC_HASHES.clear()
-
-
-reset()
-
-
-def hospital(hid):
-    return HOSPITALS.get(hid)
-
-
-def doctor(did):
-    return DOCTORS.get(did)
-
-
-def disease(disease_id):
-    return DISEASES.get(disease_id)
-
-
-def policy(policy_number):
-    return POLICIES.get(policy_number)
-
-
-def doctors_at(hospital_id):
-    return {did: d for did, d in DOCTORS.items() if hospital_id in d["hospital_ids"] and d["license_valid"]}
-
-
-def history(claimant_id):
-    return CLAIM_HISTORY.get(claimant_id, [])
-
-
-def invoice_seen(hospital_id, invoice_number):
-    return (hospital_id, invoice_number) in SEEN_INVOICES
-
-
-def register_claim(claim, doc_hashes):
-    SEEN_INVOICES.add((claim.hospital_id, claim.invoice.invoice_number))
-    SEEN_DOC_HASHES.update(doc_hashes)
-    CLAIM_HISTORY.setdefault(claim.claimant_id, []).append({
-        "claim_id": claim.claim_id, "date": claim.submitted_on, "amount": claim.claimed_amount,
-        "hospital_id": claim.hospital_id, "invoice_number": claim.invoice.invoice_number,
-    })
+# The four demo scenarios of Requirement 1.4. ``case`` is a docgen case kind. ``expected`` is the intended
+# outcome, asserted by the routing tests of task 9.4. ``preauth`` is stored on the claim (claims.preauth_amount).
+SCENARIOS = {
+    "clean": {"case": "clean", "invoice_number": "INV-DEMO-CLEAN", "expected": "low",
+              "summary": "Appendectomy at City General with matching documents, valid GSTIN."},
+    "high_risk": {"case": "high_risk", "invoice_number": "INV-2002", "expected": "investigate",
+                  "summary": "Duplicate invoice, invalid GSTIN, 14-day stay for viral fever, provider volume surge."},
+    "fabricated": {"case": "fabricated", "invoice_number": "INV-DEMO-FAB", "expected": "not_low",
+                   "summary": "Editor-produced bill with a round total and an invented doctor."},
+    "borderline": {"case": "borderline", "invoice_number": "INV-DEMO-BORDER", "expected": "manual_review",
+                   "summary": "No discharge summary and the claim exceeds the pre-authorised amount."},
+}

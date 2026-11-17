@@ -9,15 +9,20 @@ from fastapi.testclient import TestClient
 from app.main import app
 
 use_llm = sys.argv[1] if len(sys.argv) > 1 else "false"
-key = {"X-Internal-Key": os.environ["INTERNAL_API_KEY"]}
 
 with TestClient(app) as c:
+    # Logs in with SCRIPT_USERNAME (default "investigator") / SCRIPT_PASSWORD from the environment.
+    _login = c.post("/api/auth/login", json={"username": os.environ.get("SCRIPT_USERNAME", "investigator"),
+                                             "password": os.environ.get("SCRIPT_PASSWORD", "")})
+    if _login.status_code != 200:
+        sys.exit(f"Login failed (HTTP {_login.status_code}). Set SCRIPT_USERNAME and SCRIPT_PASSWORD.")
+    key = {"Authorization": f"Bearer {_login.json()['access_token']}"}
     print("health", c.get("/api/health").json())
     print("bad dob", c.post("/api/policies/lookup", json={"policy_number": "POL-1001", "date_of_birth": "2000-01-01"}).status_code)
     pol = c.post("/api/policies/lookup", json={"policy_number": "pol-1001", "date_of_birth": "1992-04-18"}).json()
     print("policy", pol["holder_name"], [h["id"] for h in pol["network_hospitals"]], len(pol["covered_diseases"]), "covered,",
           len(pol["not_covered"]), "not covered")
-    print("internal no key", c.get("/api/internal/overview").status_code)
+    print("internal no token", c.get("/api/internal/overview").status_code)
 
     for kind in ("clean", "suspicious"):
         demo = c.get(f"/api/demo/{kind}").json()
