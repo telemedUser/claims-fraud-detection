@@ -1,0 +1,41 @@
+{
+  "claim_id": "CL-92C621FE",
+  "claimant_id": "U001",
+  "claimant_name": "A. Kumar",
+  "hospital_id": "H001",
+  "doctor_id": "D001",
+  "diagnosis": "Acute appendicitis",
+  "admission_date": "2026-11-01",
+  "discharge_date": "2026-11-05",
+  "claimed_amount": 41850,
+  "invoice": {
+    "invoice_number": "INV-80123F",
+    "invoice_date": "2026-11-05",
+    "line_items": [
+      {
+        "description": "Room charges - semi-private (4 days x 3,000)",
+        "amount": 12000
+      },
+      {
+        "description": "Laparoscopic appendectomy (surgeon + OT)",
+        "amount": 22000
+      },
+      {
+        "description": "Anaesthesia charges",
+        "amount": 4500
+      },
+      {
+        "description": "Laboratory and imaging (CBC, CRP, USG abdomen)",
+        "amount": 2350
+      },
+      {
+        "description": "Pharmacy - inpatient medicines",
+        "amount": 1000
+      }
+    ],
+    "total": 41850,
+    "tax_id": "27AAACC1111A1Z5"
+  },
+  "policy_number": "POL-1001",
+  "disease_id": "appendicitis"
+}

@@ -1,0 +1,28 @@
+{
+  "claim_id": "CL-973D166B",
+  "claimant_id": "U002",
+  "claimant_name": "R. Singh",
+  "hospital_id": "H002",
+  "doctor_id": "D002",
+  "diagnosis": "Viral fever",
+  "admission_date": "2026-11-08",
+  "discharge_date": "2026-11-09",
+  "claimed_amount": 120000,
+  "invoice": {
+    "invoice_number": "INV-2002",
+    "invoice_date": "2026-10-01",
+    "line_items": [
+      {
+        "description": "Consultation",
+        "amount": 50000
+      },
+      {
+        "description": "Consultation",
+        "amount": 50000
+      }
+    ],
+    "total": 100000
+  },
+  "policy_number": "POL-2002",
+  "disease_id": "viral_fever"
+}
