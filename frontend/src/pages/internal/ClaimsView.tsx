@@ -11,10 +11,11 @@ type Props = {
   client: ReturnType<typeof internalApi>
   selected: string | null
   onSelect: (id: string | null) => void
+  onOpenClaimant?: (claimantId: string) => void
 }
 
-export default function ClaimsView({ overview, claims, client, selected, onSelect }: Props) {
-  if (selected) return <ClaimDetail id={selected} overview={overview} client={client} onBack={() => onSelect(null)} />
+export default function ClaimsView({ overview, claims, client, selected, onSelect, onOpenClaimant }: Props) {
+  if (selected) return <ClaimDetail id={selected} overview={overview} client={client} onBack={() => onSelect(null)} onOpenClaimant={onOpenClaimant} />
 
   if (!claims.length)
     return (

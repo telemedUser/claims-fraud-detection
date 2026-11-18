@@ -21,6 +21,7 @@ CUSTOMER_LABELS = {
     "claimant_profile": "Checking policy and claim history",
     "document_scan": "Checking your documents",
     "invoice_check": "Validating your medical bill",
+    "medical_review": "Reviewing your medical records",
     "scoring": "Assessing your claim",
     "summary": "Preparing your claim report",
 }
@@ -30,6 +31,7 @@ CUSTOMER_CHECKS = {
     "claimant_profile": "Policy and claim history",
     "document_scan": "Document review",
     "invoice_check": "Medical bill validation",
+    "medical_review": "Medical records review",
 }
 OUTCOMES = {
     "auto_approve": {"code": "approved", "title": "Claim received",

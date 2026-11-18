@@ -1,0 +1,17 @@
+# Thresholds for the User Profile (claimant) agent and the investigator profile page.
+# Documented in docs/agents/user_profile.md.
+version: "user-2026.1"
+frequency_window_days: 90
+frequency_claims: 2            # CLAIM_FREQUENCY: this many other claims in the window
+frequency_claims_extreme: 4    # CLAIM_FREQUENCY_EXTREME
+amount_spike_multiple: 3.0     # AMOUNT_SPIKE: claim above this multiple of the claimant's average
+hospital_hopping: 3            # HOSPITAL_HOPPING: distinct hospitals in earlier claims
+similar_amount_spread: 0.10    # REPEATED_SIMILAR_AMOUNTS: max-min below this share of the max (3+ claims)
+late_submission_days: 90       # LATE_SUBMISSION: discharge to submission
+high_amount_short_stay: 100000 # HIGH_AMOUNT_SHORT_STAY: amount above this for a stay of one day or less
+flagged_decisions: [deny, REFER_TO_FIU]  # PRIOR_FRAUD_DECISION
+policy_start_days: 30          # CLAIM_SOON_AFTER_POLICY_START: admission within this many days of inception
+policy_end_days: 30            # CLAIM_NEAR_POLICY_END / POLICY_END_PATTERN: admission within this many days of term end
+policy_end_pattern_claims: 2   # POLICY_END_PATTERN: claims near a term end, including this one
+escalation_ratio: 1.2          # AMOUNT_ESCALATION: each of the last 3 claims at least this multiple of the one before
+sum_insured_share: 0.8         # SUM_INSURED_NEAR_LIMIT: claimed in the current term at least this share of sum insured

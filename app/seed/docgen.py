@@ -18,7 +18,7 @@ from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table
 
 from app.seed import seed_data as sd
 
-DOC_TYPES = ("medical_bill", "prescription", "medical_report")
+DOC_TYPES = ("medical_bill", "prescription", "medical_report", "lab_report")
 
 _ss = getSampleStyleSheet()
 H1 = ParagraphStyle("h1", parent=_ss["Title"], fontSize=16, spaceAfter=2)
@@ -65,6 +65,7 @@ def build_case(kind: str, today: date | None = None) -> dict:
                      "/CreationDate": _pdfdate(dis), "/ModDate": _pdfdate(dis)},
         }
         case["claimed_amount"] = sum(q * r for _, q, r in case["items"])
+        case["payment"] = {"mode": "UPI", "receipt": f"RCPT-{uid}", "paid": case["claimed_amount"], "date": dis}
     elif kind == "suspicious":
         adm = today - timedelta(days=9)
         dis = adm + timedelta(days=1)
@@ -78,16 +79,25 @@ def build_case(kind: str, today: date | None = None) -> dict:
             "complaints": "Fever for 1 day.",
             "findings": "Temperature 99.4 F. No other abnormality detected.",
             "labs": [("Haemoglobin", "14.1 g/dL", "13.0 - 17.0"), ("WBC count", "7,800 /uL", "4,000 - 11,000"),
-                     ("CRP", "3 mg/L", "< 5")],
+                     ("CRP", "48 mg/L", "< 5")],
             "procedure": "None.",
             "course": "Observed overnight. Fever settled with paracetamol.",
             "condition": "Stable.",
-            "rx": [("Tab. Paracetamol 500 mg", "1 tablet", "Three times daily if fever", "3 days")],
+            "rx": [("Tab. Paracetamol 500 mg", "1 tablet", "Three times daily if fever", "3 days"),
+                   ("Tab. Azithromycin 500 mg", "1 tablet", "Once daily", "5 days")],  # antibiotic for a viral fever
             "advice": "Oral fluids. Review if fever persists.",
+            "icd": "A97.0",  # dengue code on a viral-fever claim
+            # the lab issued CRP 3 mg/L (signed); the uploaded copy was altered to 48 mg/L
+            "labs_signed": [("Haemoglobin", "14.1 g/dL", "13.0 - 17.0"), ("WBC count", "7,800 /uL", "4,000 - 11,000"),
+                            ("CRP", "3 mg/L", "< 5")],
             # edited in Photoshop, created long before admission, modified after discharge
             "meta": {"/Producer": "Adobe Photoshop 25.0", "/Creator": "Adobe Photoshop 25.0",
                      "/CreationDate": _pdfdate(today - timedelta(days=320), "100000"),
                      "/ModDate": _pdfdate(today - timedelta(days=6), "223000")},
+            # marked cashless with the full amount still due, yet claimed as a reimbursement
+            "payment": {"mode": "Cashless (insurer / TPA)", "receipt": None, "paid": 0, "date": None},
+            # the saved bill was edited again later (second PDF revision)
+            "incremental_edit": _pdfdate(today - timedelta(days=5), "231500"),
         }
     elif kind in DEMO_KINDS:
         return _demo_case(kind, today)
@@ -105,6 +115,17 @@ def _finish(case: dict) -> dict:
     case["bill_total"] = sum(q * r for _, q, r in case["items"])
     case.setdefault("doc_types", DOC_TYPES)
     case.setdefault("preauth_amount", None)
+    # Lab report issued by the hospital's lab, with a verification code over what the lab issued (labs_signed);
+    # what is printed is case["labs"], so a difference simulates a tampered copy.
+    from app.core import lab_registry
+    from app.core.medical_reference import primary_icd
+
+    prefix = sd.HOSPITAL_LAB.get(case["hospital_id"], "PCL")
+    case["lab_number"] = f"{prefix}-{uuid.uuid4().hex[:6].upper()}"
+    signed = case.get("labs_signed") or case["labs"]
+    case["lab_code"] = lab_registry.sign(case["lab_number"], case["admission"].isoformat(), case["policy_number"],
+                                         [(n, r) for n, r, _ in signed])
+    case["icd"] = case.get("icd") or primary_icd(case["disease_id"])
     return case
 
 
@@ -124,6 +145,7 @@ def _demo_case(kind: str, today: date) -> dict:
         case["bill_date"] = case["discharge"]
         return _finish(case)
     case = build_case("clean", today)
+    case.pop("icd", None)  # recomputed for the new diagnosis in _finish
     if kind == "fabricated":
         # AI/editor-looking bill: round total, editor producer metadata created and modified the same minute,
         # and a doctor who is not in any register.
@@ -134,8 +156,9 @@ def _demo_case(kind: str, today: date) -> dict:
             admission=adm, discharge=dis, bill_date=dis, rx_date=dis, invoice_number="INV-DEMO-FAB",
             bill_tax_id=sd.HOSPITALS["H004"]["tax_id"],
             items=[("Lithotripsy treatment package (all inclusive)", 1, 100000)], claimed_amount=100000,
-            meta={"/Producer": "Canva", "/Creator": "Canva",
+            meta={"/Producer": "Canva", "/Creator": "Canva Magic Design",
                   "/CreationDate": _pdfdate(dis, "101000"), "/ModDate": _pdfdate(dis, "101100")})
+        case["payment"] = {"mode": "UPI", "receipt": f"RCPT-FAB-{uuid.uuid4().hex[:4].upper()}", "paid": 100000, "date": dis}
         return _finish(case)
     # borderline: no discharge summary and the claim exceeds the pre-authorised amount
     # TODO(19.2): the pre-auth overrun is only stored (claims.preauth_amount); Billing_Intelligence will check it
@@ -148,6 +171,7 @@ def _demo_case(kind: str, today: date) -> dict:
         policy_number="POL-1001", hospital_id="H005", doctor_id="D006", disease_id="pneumonia",
         admission=adm, discharge=dis, bill_date=dis, rx_date=dis, invoice_number="INV-DEMO-BORDER",
         bill_tax_id=sd.HOSPITALS["H005"]["tax_id"], items=items, claimed_amount=68400,
+        payment={"mode": "Card", "receipt": "RCPT-BORDER-01", "paid": 68400, "date": dis},
         preauth_amount=50000, doc_types=("medical_bill", "prescription"),
         complaints="Cough with fever for 4 days and breathlessness.",
         findings="Right lower zone crepitations. Chest X-ray: consolidation.",
@@ -274,10 +298,28 @@ def medical_bill(c) -> bytes:
         ("Consultant", c["doctor"]["name"], "Department", c["doctor"]["specialty"]),
         ("Diagnosis", c["disease"]["name"], "Hospital ID", c["hospital_id"]),
     ]), Spacer(1, 10), _grid(rows, [10 * mm, 100 * mm, 15 * mm, 27 * mm, 28 * mm], right_cols=(2, 3, 4)),
-        Spacer(1, 6), Paragraph(f"<b>Amount payable: INR {_money(c['bill_total'])}</b>", N),
-        Paragraph("Payment mode: Cashless / Insurance claim", SMALL)]
+        Spacer(1, 6), Paragraph(f"<b>Amount payable: INR {_money(c['bill_total'])}</b>", N)]
+    pay = c.get("payment") or {}
+    paid = pay.get("paid", c["bill_total"])
+    story += [Spacer(1, 4), _kv([
+        ("Payment mode", pay.get("mode", "UPI"), "Receipt No.", pay.get("receipt") or "-"),
+        ("Amount paid", f"INR {_money(paid)}", "Balance due", f"INR {_money(c['bill_total'] - paid)}"),
+        ("Paid on", _fmt(pay["date"]) if pay.get("date") else "-", "Status", "Paid in full" if paid >= c["bill_total"] else "Payment pending"),
+    ])]
     story += _sign("Authorised signatory", c["hospital"]["name"])
-    return _build(story, c["meta"], "Medical Bill")
+    data = _build(story, c["meta"], "Medical Bill")
+    if c.get("incremental_edit"):
+        data = _incremental_edit(data, c["incremental_edit"])
+    return data
+
+
+def _incremental_edit(data: bytes, mod_date: str) -> bytes:
+    """Append a second revision (as an editor does when a saved PDF is changed and saved again)."""
+    w = PdfWriter(io.BytesIO(data), incremental=True)
+    w.add_metadata({"/ModDate": mod_date})
+    out = io.BytesIO()
+    w.write(out)
+    return out.getvalue()
 
 
 def prescription(c) -> bytes:
@@ -305,7 +347,8 @@ def medical_report(c) -> bytes:
         ("Admitted", _fmt(c["admission"]), "Discharged", _fmt(c["discharge"])),
         ("Consultant", f"{d['name']} ({d['registration_no'] or 'reg. not stated'})", "Department", d["specialty"]),
     ])]
-    for title, text in [("Final diagnosis", c["disease"]["name"]), ("Presenting complaints", c["complaints"]),
+    final = f"{c['disease']['name']} (ICD-10: {c['icd']})" if c.get("icd") else c["disease"]["name"]
+    for title, text in [("Final diagnosis", final), ("Presenting complaints", c["complaints"]),
                         ("Clinical findings", c["findings"])]:
         story += [Paragraph(title, H2), Paragraph(text, N)]
     story += [Paragraph("Investigations", H2), _grid(labs, [70 * mm, 50 * mm, 60 * mm])]
@@ -317,7 +360,29 @@ def medical_report(c) -> bytes:
     return _build(story, c["meta"], "Medical Report")
 
 
-RENDERERS = {"medical_bill": medical_bill, "prescription": prescription, "medical_report": medical_report}
+def lab_report(c) -> bytes:
+    """Report from the hospital's laboratory. No GSTIN (the lab bills separately); names the referring hospital."""
+    lab = sd.LABS[c["lab_number"].split("-", 1)[0]]
+    labs = [["Test", "Result", "Reference range"]] + [list(x) for x in c["labs"]]
+    story = [Paragraph(lab["name"], H1),
+             Paragraph(f"{lab['city']} | NABL accredited (simulated) | Referred by: {c['hospital']['name']}", SUB),
+             Spacer(1, 6),
+             Table([[Paragraph("<b>LABORATORY REPORT</b>", ParagraphStyle("t", parent=N, fontSize=12, alignment=1, textColor=colors.white))]],
+                   colWidths=[180 * mm], style=[("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#14532d")),
+                                                ("TOPPADDING", (0, 0), (-1, -1), 4), ("BOTTOMPADDING", (0, 0), (-1, -1), 4)]),
+             Spacer(1, 8),
+             _kv([("Lab report No.", c["lab_number"], "Sample date", _fmt(c["admission"])),
+                  ("Patient", _patient(c), "Policy No.", c["policy_number"]),
+                  ("Referred by", c["doctor"]["name"], "Hospital", c["hospital"]["name"])]),
+             Spacer(1, 10), _grid(labs, [70 * mm, 50 * mm, 60 * mm]), Spacer(1, 10),
+             Paragraph(f"Verification code: {c['lab_code']}", N),
+             Paragraph("Verify this report on the laboratory portal with the report number (SIMULATED).", SMALL)]
+    story += _sign("Pathologist", lab["name"])
+    return _build(story, c["meta"], "Lab Report")
+
+
+RENDERERS = {"medical_bill": medical_bill, "prescription": prescription, "medical_report": medical_report,
+             "lab_report": lab_report}
 
 
 def render(case: dict, doc_type: str) -> bytes:

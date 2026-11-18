@@ -19,12 +19,17 @@ Demo policies (fictional): `POL-1001`, DOB `1992-04-18` (A. Kumar) and `POL-2002
 
 | Agent | Checks |
 |---|---|
-| `provider_profile` | Hospital and doctor profiles: registration, license, affiliation, fraud history, volume, amount outliers, tax ID match |
-| `claimant_profile` | Claim frequency, amount spikes, hospital hopping, repeated amounts, date sanity |
-| `document_scan` | Required documents, file type, reused files (hash), PDF/EXIF metadata: editing software, modified after creation, created before admission |
-| `invoice_check` | Line items vs total, invoice vs claimed amount, duplicate invoice, date window, missing tax ID, round totals, amount and stay vs typical for the diagnosis |
+| `provider_profile` | Registry checks on the admission date (licence and expiry, affiliation dates, network period, GSTIN), a profile computed from claims data (volume surge, amount and peer outliers, flag rate with investigator decisions, similar bills, capacity, same day in another city), specialty fit, and documents against the registry. See [docs/agents/provider_profile.md](docs/agents/provider_profile.md) |
+| `claimant_profile` (User Profile) | Earlier claims and outcomes: frequency, amount spikes and escalation, similar amounts, hospital hopping, re-claimed or overlapping stays, timing around policy start and term end, sum-insured use, earlier denied or referred claims. Console **Users** tab shows each person's full profile. See [docs/agents/user_profile.md](docs/agents/user_profile.md) |
+| `document_scan` | Completeness, reuse, metadata, edits after generation (extra PDF revisions, bill modified after its date), AI-tool markers, printed patient, policy, dates, diagnosis and bill details against the claim. See [docs/agents/document_scan.md](docs/agents/document_scan.md) |
+| `invoice_check` | Arithmetic and plausibility, GSTIN check digit and GST lines, duplicate and re-numbered bills, payment status (cashless, balance due, claimed above paid, receipt). See [docs/agents/invoice_check.md](docs/agents/invoice_check.md) |
+| `medical_review` | ICD-10 codes against the diagnosis, medicines against the diagnosis, lab report tamper check by report number, treatment against the diagnosis. See [docs/agents/medical_review.md](docs/agents/medical_review.md) |
 
-Each agent runs its rules first. Gemini then reviews the claim with lookup tools (`get_hospital_profile`, `get_doctor_profile`, `get_claimant_history`, `get_document_metadata`, `get_disease_guidelines`, `get_policy_details`) and may add findings. LLM findings are capped at `medium` and add at most 25 points per agent. On any LLM error the agent keeps its rule result.
+The agents are deterministic rule engines, and the score and queue come from their findings. The **LLM analysis** switch in the console header (Administrator only, audited) turns the LLM on or off for every claim submitted after the change. When it is on:
+- each agent gets a Gemini review with lookup tools, which adds AI observations and reasoning. Observations are scored as potential anomalies (capped at 15 points per agent and 25 per claim, so the LLM alone cannot queue a claim)
+- the investigator summary is written by Gemini
+
+Details and guardrails are in [docs/llm_usage.md](docs/llm_usage.md). Changes are logged in [docs/CHANGELOG.md](docs/CHANGELOG.md).
 
 - **Score:** additive and saturating: severity points x status multiplier summed over de-duplicated findings, capped at 100 (`app/core/scoring.py`, `app/rules/risk_scoring.v1.yaml`).
 - **Decision:** routing queue (a recommendation, not a decision): `<30` low risk, `30-59` manual review, `>=60` investigate (`app/pipeline.py`).
@@ -33,7 +38,7 @@ Each agent runs its rules first. Gemini then reviews the claim with lookup tools
 ## Configuration (`.env`, git-ignored)
 
 ```
-GEMINI_API_KEY=...          # enables LLM review and summary
+GEMINI_API_KEY=...          # required for LLM analysis; then the console switch decides (default: LLM_REVIEW_ENABLED=true)
 GEMINI_MODEL=...            # optional comma-separated fallback chain
 JWT_SECRET=...              # required: signs login tokens; the app refuses to start without it
 SEED_USER_PASSWORD=...      # seeds investigator / ops_manager / fraud_team / admin (or SEED_PASSWORD_<ROLE>)
@@ -65,6 +70,7 @@ Stack: FastAPI (Python) backend; React 19, TypeScript, Vite, Tailwind CSS v4, Re
 | `python scripts/ui_e2e.py` | Browser test of the journey and console (Edge via Playwright); screenshots in `ui_screens/` |
 | `python scripts/generate_test_docs.py` | Writes bill, prescription, report and `claim.json` to `test_documents/{clean,suspicious}` |
 | `python scripts/submit_test_docs.py all` | Submits those sets to `/api/assess` |
+| `python scripts/provider_profile_demo.py` | Provider Profile checks on the demo scenarios plus one targeted case per check (own in-memory database) |
 
 Data is in memory. Use **Reset demo data** in the console to clear claims and restore the seeded history.
 

@@ -24,7 +24,7 @@ Decided direction:
 ## 2. Non-negotiable rules
 
 1. An anomaly is an investigation signal, not proof. The system never rejects or denies a claim. Only a human can record `deny`.
-2. Deterministic code handles exact matching, dates, policy rules, arithmetic, checksums, duplicates and thresholds. The LLM is used only for document understanding, semantic comparison, summaries and explanations. LLM output never sets the score or the routing band, and AI/ML findings are capped at POTENTIAL_ANOMALY.
+2. Deterministic code handles exact matching, dates, policy rules, arithmetic, checksums, duplicates and thresholds. The LLM is used only for document understanding, semantic comparison, summaries and explanations. LLM findings are capped at POTENTIAL_ANOMALY and add capped points (15 per agent, 25 per claim, `llm:` in `risk_scoring.v1.yaml`) on top of the rule score; the LLM alone cannot reach the manual-review band, and a failed LLM review adds nothing. (Changed 2026-11-21 at the user's request; it was "never sets the score".)
 3. Every finding carries evidence: use case, category, status, source document and page or field, extracted and expected values, method, confidence, limitations, next action, rule version.
 4. Never call something verified, genuine or authentic without an authoritative source. Simulated sources are labelled SIMULATED.
 5. Missing GST on generally exempt healthcare services is not a fraud signal.
@@ -50,6 +50,13 @@ About 63 of 140 tasks are complete (milestones 1-13, plus 14.1, 14.2 and 14.5).
 - Logging: structlog JSON with request id, no personal data (`app/logging_setup.py`).
 - Frontend: customer journey restyled to a blue, square-cornered insurer theme; internal console has login.
 - Tests: about 450 tests including Hypothesis property tests.
+- Provider Profile agent enhanced (2026-11-20; see `docs/CHANGELOG.md` and `docs/agents/provider_profile.md`):
+  - a profile computed from claims data and investigator decisions
+  - registry checks read on the admission date, plus specialty fit
+  - document-to-registry checks
+  - migration 0003 and thresholds in `app/rules/provider_profile.v1.yaml`
+  
+  The new checks are still in the legacy agent. Move them into `Provider_Intelligence` with tasks 18–20.
 
 ## 4. Pending (in order)
 

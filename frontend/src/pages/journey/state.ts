@@ -41,7 +41,7 @@ export const initialState: JourneyState = {
   items: [emptyItem()],
   claimedAmount: '',
   claimedTouched: false,
-  docs: { medical_bill: null, medical_report: null, prescription: null },
+  docs: { medical_bill: null, medical_report: null, prescription: null, lab_report: null, payment_receipt: null },
   others: [],
   consent: false,
 }

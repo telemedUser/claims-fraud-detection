@@ -182,6 +182,7 @@ Today ClaimShield runs four agents (provider_profile, claimant_profile, document
 
 1. THE ClaimShield SHALL keep the customer submission journey as an intake channel that creates a Claim and uploads Documents.
 2. THE ClaimShield SHALL set analysis settings, including whether the LLM_Adapter is used, from server configuration and ignore any client-supplied analysis setting.
+   - Clarification: the server configuration includes the "LLM analysis" switch in the internal console (`app_settings.llm_analysis_enabled`). Only an Administrator can change it (`POST /api/internal/settings/llm`), each change is audited as `config_change`, and each Claim reads it when it is submitted. Without a stored value, `LLM_REVIEW_ENABLED` applies; without a provider key, the LLM is off whatever the switch says. A `use_llm` field on a customer submission is still ignored.
 3. THE ClaimShield SHALL describe check results to customers only as "No issues found", "Verification unavailable" or "SIMULATED".
    - Clarification: a check backed by a simulated registry is labelled "SIMULATED". A check with a low score is labelled "No issues found". A check with any other score is labelled "Verification unavailable", so that no Finding or score is disclosed (Requirement 8.5).
    - Clarification: customer outcome text says the claim was "received" and never states that the claim was approved, verified or passed all checks.
@@ -216,8 +217,11 @@ Today ClaimShield runs four agents (provider_profile, claimant_profile, document
 4. IF LLM output fails validation or the LLM_Adapter errors, THEN THE ClaimShield SHALL fall back to rules-only results and mark the affected AI Checks INCONCLUSIVE.
 5. THE ClaimShield SHALL use the LLM_Adapter only for document understanding, semantic comparison, summarisation and explanation.
 6. THE ClaimShield SHALL NOT use LLM output alone to create a CONFIRMED_RULE_VIOLATION Finding or to set a Routing_Band.
+   - Clarification: the per-agent LLM review (`app/llm_review.py`) adds observations tagged `source="llm"` that are shown to Investigators and are not scored, so the score and Routing_Band come from rule Findings only. See `docs/llm_usage.md`.
 7. WHEN Document text contains instructions addressed to the model, THE ClaimShield SHALL ignore them, and the Checks SHALL return the same Findings as for the same Claim without those instructions.
 8. THE ClaimShield SHALL record for each LLM call the Rule_Version of the prompt, the adapter used and the fields sent, without storing PII in the record.
+9. WHERE the LLM analysis switch is on and a provider key is configured, THE ClaimShield SHALL run the LLM review for every completed agent and the LLM summary for every Claim submitted after the switch was set, and SHALL record each call in `llm_calls`.
+10. IF an LLM review output fails schema validation, THEN THE ClaimShield SHALL request one corrected output and validate it again, and SHALL fall back to the rule-only result if the corrected output also fails.
 
 ### Requirement 11: Policy, Eligibility and Deterministic Validation
 
@@ -290,10 +294,16 @@ Today ClaimShield runs four agents (provider_profile, claimant_profile, document
 3. WHEN a legitimate high-cost treatment is documented by consistent clinical documents, THE Billing_Intelligence Agent SHALL lower the Finding severity to informational and cite the supporting documents.
 4. IF no reference range exists for a charge category, THEN THE Billing_Intelligence Agent SHALL mark the corresponding Check NOT_CHECKED.
 5. WHEN a provider's claim volume in a period exceeds a configured multiple of its baseline, THE Provider_Intelligence Agent SHALL create a POTENTIAL_ANOMALY Finding for Use_Case 65.
+   - Clarification: implemented by the Provider Profile agent (the legacy module that maps to Provider_Intelligence) as `HOSPITAL_VOLUME_SURGE` and `DOCTOR_VOLUME_SURGE`. The period is `volume.window_days` (30) in `app/rules/provider_profile.v1.yaml`, the baseline is the registry monthly figure scaled to that period, the multiple is `thresholds.provider_volume_multiple`, and no Finding is created below `volume.min_claims` claims. See `docs/agents/provider_profile.md`.
 6. THE Operational_Intelligence Agent SHALL implement Use_Cases 115-122 from approval, override, settlement, resubmission and post-submission change records and attribute each Finding to a pattern, not to an individual as a conclusion.
 7. WHEN a Claim is changed after submission, THE ClaimShield SHALL record the change with before and after values and create a Finding for Use_Case 120.
 8. WHEN a Claim is approved without required Documents, THE Operational_Intelligence Agent SHALL create a Finding for Use_Cases 118 and 122.
 9. THE ClaimShield SHALL show Operational_Intelligence Findings only to the Ops_Manager, Fraud_Team and Administrator roles.
+10. WHEN the provider registry, read on the admission date, shows an expired doctor licence, an affiliation that does not cover the admission, or an admission outside the hospital's network period, THE Provider_Intelligence Agent SHALL create a Finding that states the registry dates.
+11. WHEN the treating doctor's specialty, or every specialty the hospital has on record, is outside the specialties configured for the Claim's diagnosis, THE Provider_Intelligence Agent SHALL create a POTENTIAL_ANOMALY Finding.
+12. THE Provider_Intelligence Agent SHALL compute amount baselines, peer comparisons, flag rates and claim volumes from processed Claims and Investigator decisions, SHALL fall back to registry figures when the sample is below a configured minimum, and SHALL state in each Finding which basis was used.
+13. WHEN the hospital name, GSTIN, doctor name or doctor registration number extracted from a Document differs from the provider registry, THE Provider_Intelligence Agent SHALL create a Finding that names the Document and both values.
+14. IF Documents were uploaded but none has machine-readable text, THEN THE Provider_Intelligence Agent SHALL create an INCONCLUSIVE Finding stating that the document-to-registry comparison was not performed.
 
 ### Requirement 16: API Contract
 

@@ -105,6 +105,14 @@ class ProviderRepo:
         p = self.s.get(m.Provider, d.provider_id)
         return [p.code] if p else []
 
+    def _affiliation_dates(self, d: m.Doctor) -> dict[str, tuple[str | None, str | None]]:
+        """hospital code -> (start, end) ISO dates, only for affiliations with dates on record."""
+        rows = self.s.execute(
+            select(m.Provider.code, m.DoctorAffiliation.start_date, m.DoctorAffiliation.end_date)
+            .join(m.DoctorAffiliation, m.DoctorAffiliation.provider_id == m.Provider.id)
+            .where(m.DoctorAffiliation.doctor_id == d.id).order_by(m.DoctorAffiliation.position)).all()
+        return {code: (_iso(start), _iso(end)) for code, start, end in rows if start or end}
+
     def _doctor_dict(self, d: m.Doctor) -> dict:
         specs = list(d.specialities or [])
         return {
@@ -114,6 +122,8 @@ class ProviderRepo:
             "hospital_ids": self._hospital_codes(d),
             "claims_per_month": _num(d.claims_per_month, 0),
             "flagged_claims_ratio": _num(d.flagged_claims_ratio, 0),
+            "licence_valid_to": _iso(d.licence_valid_to),
+            "affiliation_dates": self._affiliation_dates(d),
         }
 
     def hospital(self, hid: str) -> dict | None:
@@ -134,7 +144,13 @@ class ProviderRepo:
             "avg_claim": _num(p.avg_claim, 0), "std_claim": _num(p.std_claim, 0),
             "flagged_claims_ratio": _num(p.flagged_claims_ratio, 0), "years_active": _num(p.years_active, 0),
             "baseline_monthly_claims": _num(p.baseline_monthly_claims),
+            "state_code": p.state_code, "bed_count": p.bed_count,
+            "empanelled_from": _iso(p.empanelled_from), "empanelled_to": _iso(p.empanelled_to),
         }
+
+    def provider_names(self) -> dict[str, str]:
+        """All hospital codes and names (used to name the hospital printed on a mismatching document)."""
+        return {code: name for code, name in self.s.execute(select(m.Provider.code, m.Provider.name))}
 
     def doctor(self, did: str) -> dict | None:
         d = self._doctor(did)
@@ -187,6 +203,24 @@ class InvoiceRepo:
                     m.Claim.status.not_in(NOT_PRIOR)).limit(1))
         return self.s.scalars(q).first() is not None
 
+    def invoice_candidates(self, hospital_id: str, invoice_number: str, exclude_ref: str | None = None) -> list[dict]:
+        """Earlier processed invoices that could duplicate this one: every invoice at the same hospital, plus any
+        invoice elsewhere whose number shares the last 4 characters (normalised matching is done by the caller)."""
+        tail = "".join(ch for ch in (invoice_number or "") if ch.isalnum())[-4:]
+        q = (select(m.Invoice.invoice_number, m.Invoice.invoice_date, m.Invoice.stated_total, m.Claim.claim_ref,
+                    m.Claim.claimant_ref, m.Provider.code)
+             .join(m.Claim, m.Claim.id == m.Invoice.claim_id)
+             .outerjoin(m.Provider, m.Provider.id == m.Claim.provider_id)
+             .where(m.Claim.status.not_in(NOT_PRIOR)))
+        cond = m.Provider.code == hospital_id
+        if tail:
+            cond = cond | m.Invoice.invoice_number.contains(tail)
+        q = q.where(cond)
+        if exclude_ref:
+            q = q.where((m.Claim.claim_ref.is_(None)) | (m.Claim.claim_ref != exclude_ref))
+        return [{"invoice_number": num, "invoice_date": d, "total": _num(t), "claim_id": ref, "claimant_id": who,
+                 "hospital_id": code} for num, d, t, ref, who, code in self.s.execute(q)]
+
     def doc_hash_seen(self, sha256: str) -> bool:
         return bool(self.seen_doc_hashes([sha256]))
 
@@ -226,6 +260,46 @@ class ClaimRepo:
                 "is_test": bool(c.is_test),
             })
         return out
+
+    def claimant_records(self, claimant_id: str, exclude_ref: str | None = None) -> list[dict]:
+        """Earlier processed claims of the claimant with stay, provider, diagnosis and the latest investigator
+        decision, oldest first. Used by the User Profile agent and the investigator profile page."""
+        if not claimant_id:
+            return []
+        q = (select(m.Claim, m.Provider.code, m.Provider.name, m.Doctor.code)
+             .outerjoin(m.Provider, m.Provider.id == m.Claim.provider_id)
+             .outerjoin(m.Doctor, m.Doctor.id == m.Claim.doctor_id)
+             .where(m.Claim.claimant_ref == claimant_id, m.Claim.status.not_in(NOT_PRIOR)))
+        if exclude_ref:
+            q = q.where((m.Claim.claim_ref.is_(None)) | (m.Claim.claim_ref != exclude_ref))
+        rows = self.s.execute(q.order_by(m.Claim.submitted_on, m.Claim.created_at)).all()
+        ids = [c.id for c, *_ in rows]
+        latest: dict[uuid.UUID, tuple[str, datetime | None]] = {}
+        if ids:
+            for cid, decision, at in self.s.execute(
+                    select(m.InvestigatorDecision.claim_id, m.InvestigatorDecision.decision, m.InvestigatorDecision.created_at)
+                    .where(m.InvestigatorDecision.claim_id.in_(ids))):
+                if cid not in latest or (at and latest[cid][1] and at > latest[cid][1]):
+                    latest[cid] = (decision, at)
+        out = []
+        for c, hcode, hname, dcode in rows:
+            inv = self.s.scalars(select(m.Invoice).where(m.Invoice.claim_id == c.id)).first()
+            out.append({
+                "claim_id": c.claim_ref or str(c.id),
+                "submitted": c.submitted_on.date() if c.submitted_on else None,
+                "admission": c.admission_date, "discharge": c.discharge_date,
+                "amount": _num(c.claimed_amount), "hospital_id": hcode, "hospital": hname, "doctor_id": dcode,
+                "disease": c.disease_code, "invoice_number": inv.invoice_number if inv else None,
+                "status": c.status, "decision": latest.get(c.id, (None,))[0], "is_test": bool(c.is_test),
+            })
+        return out
+
+    def claimants(self) -> list[dict]:
+        """Every member with a claimant code: identity and policy (staff view only, never sent to the LLM)."""
+        rows = self.s.execute(select(m.Member, m.Policy).outerjoin(m.Policy, m.Policy.id == m.Member.policy_id)
+                              .where(m.Member.code.is_not(None)).order_by(m.Member.code)).all()
+        return [{"claimant_id": mem.code, "name": mem.name, "relation": mem.relation, "dob": _iso(mem.dob),
+                 "policy_number": pol.policy_number if pol else None} for mem, pol in rows]
 
     def _member_id(self, claimant_id: str | None) -> uuid.UUID | None:
         if not claimant_id:
@@ -294,6 +368,123 @@ class ClaimRepo:
         return len(ids)
 
 
+class ProviderActivityRepo:
+    """Claims-data queries behind the computed provider profile (Provider Profile agent).
+
+    Every query counts earlier, processed claims only (status not in ``NOT_PRIOR``) and leaves out the
+    claim being assessed (``exclude_ref``), so re-assessing a claim never compares it with itself.
+    """
+
+    def __init__(self, session: Session):
+        self.s = session
+
+    def _prior(self, q, exclude_ref: str | None):
+        q = q.where(m.Claim.status.not_in(NOT_PRIOR))
+        if exclude_ref:
+            q = q.where((m.Claim.claim_ref.is_(None)) | (m.Claim.claim_ref != exclude_ref))
+        return q
+
+    def _provider_id(self, code: str) -> uuid.UUID | None:
+        return self.s.scalars(select(m.Provider.id).where(m.Provider.code == code)).first()
+
+    def _doctor_id(self, did: str) -> uuid.UUID | None:
+        d = ProviderRepo(self.s)._doctor(did)
+        return d.id if d else None
+
+    def provider_claim_count(self, code: str, since: datetime, until: datetime, exclude_ref: str | None = None) -> int:
+        pid = self._provider_id(code)
+        if pid is None:
+            return 0
+        q = select(m.Claim.id).where(m.Claim.provider_id == pid, m.Claim.submitted_on >= since, m.Claim.submitted_on < until)
+        return len(self.s.scalars(self._prior(q, exclude_ref)).all())
+
+    def doctor_claim_count(self, did: str, since: datetime, until: datetime, exclude_ref: str | None = None) -> int:
+        doc_id = self._doctor_id(did)
+        if doc_id is None:
+            return 0
+        q = select(m.Claim.id).where(m.Claim.doctor_id == doc_id, m.Claim.submitted_on >= since, m.Claim.submitted_on < until)
+        return len(self.s.scalars(self._prior(q, exclude_ref)).all())
+
+    def provider_amounts(self, code: str, disease: str | None = None, exclude_ref: str | None = None) -> list[float]:
+        """Claimed amounts at the hospital, optionally for one diagnosis."""
+        pid = self._provider_id(code)
+        if pid is None:
+            return []
+        q = select(m.Claim.claimed_amount).where(m.Claim.provider_id == pid, m.Claim.claimed_amount.is_not(None))
+        if disease:
+            q = q.where(m.Claim.disease_code == disease)
+        return [float(v) for v in self.s.scalars(self._prior(q, exclude_ref))]
+
+    def peer_amounts(self, disease: str, exclude_code: str, exclude_ref: str | None = None) -> list[float]:
+        """Claimed amounts for the diagnosis at every other hospital."""
+        pid = self._provider_id(exclude_code)
+        q = select(m.Claim.claimed_amount).where(m.Claim.disease_code == disease, m.Claim.claimed_amount.is_not(None))
+        if pid is not None:
+            q = q.where((m.Claim.provider_id.is_(None)) | (m.Claim.provider_id != pid))
+        return [float(v) for v in self.s.scalars(self._prior(q, exclude_ref))]
+
+    def decision_counts(self, flagged_decisions: Iterable[str], since: datetime, *, hospital: str | None = None,
+                        doctor: str | None = None) -> tuple[int, int]:
+        """(decided claims, claims whose latest investigator decision is a flagged one) since ``since``."""
+        q = (select(m.InvestigatorDecision.claim_id, m.InvestigatorDecision.decision, m.InvestigatorDecision.created_at)
+             .join(m.Claim, m.Claim.id == m.InvestigatorDecision.claim_id)
+             .where(m.InvestigatorDecision.created_at >= since))
+        if hospital:
+            pid = self._provider_id(hospital)
+            if pid is None:
+                return 0, 0
+            q = q.where(m.Claim.provider_id == pid)
+        if doctor:
+            doc_id = self._doctor_id(doctor)
+            if doc_id is None:
+                return 0, 0
+            q = q.where(m.Claim.doctor_id == doc_id)
+        latest: dict[uuid.UUID, tuple] = {}
+        for claim_id, decision, at in self.s.execute(q):
+            if claim_id not in latest or (at and latest[claim_id][1] and at > latest[claim_id][1]):
+                latest[claim_id] = (decision, at)
+        flagged = set(flagged_decisions)
+        return len(latest), sum(1 for d, _ in latest.values() if d in flagged)
+
+    def overlapping_stays(self, code: str, day: date, exclude_ref: str | None = None) -> int:
+        """Claims at the hospital whose stay includes ``day`` (admission <= day <= discharge)."""
+        pid = self._provider_id(code)
+        if pid is None:
+            return 0
+        q = select(m.Claim.id).where(m.Claim.provider_id == pid, m.Claim.admission_date.is_not(None),
+                                     m.Claim.admission_date <= day,
+                                     (m.Claim.discharge_date.is_(None) & (m.Claim.admission_date == day))
+                                     | (m.Claim.discharge_date >= day))
+        return len(self.s.scalars(self._prior(q, exclude_ref)).all())
+
+    def doctor_admissions_on(self, did: str, day: date, exclude_ref: str | None = None) -> list[dict]:
+        """Other claims by the doctor admitted on ``day``: hospital code, name and city."""
+        doc_id = self._doctor_id(did)
+        if doc_id is None:
+            return []
+        q = (select(m.Claim.claim_ref, m.Provider.code, m.Provider.name, m.Provider.city)
+             .join(m.Provider, m.Provider.id == m.Claim.provider_id)
+             .where(m.Claim.doctor_id == doc_id, m.Claim.admission_date == day))
+        return [{"claim_id": ref, "hospital_id": code, "hospital": name, "city": city}
+                for ref, code, name, city in self.s.execute(self._prior(q, exclude_ref))]
+
+    def doctor_similar_amount_claimants(self, did: str, amount: float, tolerance_pct: float, since: datetime,
+                                        exclude_claimant: str | None, exclude_ref: str | None = None) -> int:
+        """Distinct other claimants with a claim by this doctor within ``tolerance_pct`` of ``amount``."""
+        doc_id = self._doctor_id(did)
+        if doc_id is None or amount <= 0:
+            return 0
+        lo, hi = amount * (1 - tolerance_pct / 100), amount * (1 + tolerance_pct / 100)
+        q = select(m.Claim.claimant_ref, m.Claim.member_id, m.Claim.claimed_amount).where(
+            m.Claim.doctor_id == doc_id, m.Claim.submitted_on >= since, m.Claim.claimed_amount.is_not(None))
+        people = set()
+        for ref, member_id, amt in self.s.execute(self._prior(q, exclude_ref)):
+            who = ref or (str(member_id) if member_id else None)
+            if who and who != exclude_claimant and lo <= float(amt) <= hi:
+                people.add(who)
+        return len(people)
+
+
 class Repos:
     """All repositories over one session, exposing the old ``store`` function names."""
 
@@ -304,6 +495,7 @@ class Repos:
         self.claims = ClaimRepo(session)
         self.invoices = InvoiceRepo(session)
         self.reference = ReferenceRepo()
+        self.activity = ProviderActivityRepo(session)
 
     DISEASES = DISEASES
 
@@ -325,8 +517,14 @@ class Repos:
     def history(self, claimant_id):
         return self.claims.history(claimant_id)
 
+    def claimant_records(self, claimant_id, exclude_ref=None):
+        return self.claims.claimant_records(claimant_id, exclude_ref)
+
     def invoice_seen(self, hospital_id, invoice_number):
         return self.invoices.invoice_seen(hospital_id, invoice_number)
+
+    def invoice_candidates(self, hospital_id, invoice_number, exclude_ref=None):
+        return self.invoices.invoice_candidates(hospital_id, invoice_number, exclude_ref)
 
     def doc_hash_seen(self, sha256):
         return self.invoices.doc_hash_seen(sha256)

@@ -42,6 +42,8 @@ export const DOC_LABEL: Record<string, string> = {
   medical_bill: 'Medical bill',
   medical_report: 'Medical report / discharge summary',
   prescription: 'Prescription',
+  lab_report: 'Lab report',
+  payment_receipt: 'Payment receipt',
   other: 'Other document',
 }
 

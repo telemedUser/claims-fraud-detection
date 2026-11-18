@@ -1,0 +1,37 @@
+# Thresholds for the Provider Profile agent (app/agents/provider_profile.py).
+# Documented in docs/agents/provider_profile.md. The volume multiple is shared with the risk config
+# (risk_scoring.v1.yaml: thresholds.provider_volume_multiple).
+version: "provider-2026.1"
+
+volume:
+  window_days: 30          # claims submitted in this window are counted
+  min_claims: 5            # never flag a surge below this many claims in the window
+
+doctor_volume:
+  high_per_month: 150      # DOCTOR_HIGH_VOLUME: max(registry figure, observed 30-day count) above this
+
+amount_outlier:
+  z_threshold: 2.0         # claim is more than this many standard deviations above the baseline
+  min_samples_disease: 5   # use the hospital's claims for the same diagnosis when it has at least this many
+  min_samples_hospital: 10 # otherwise all of the hospital's claims, otherwise the registry figures
+
+peer_cost:
+  min_peer_samples: 8      # peer comparison needs this many claims for the diagnosis at other hospitals
+  multiple_of_peer_median: 2.0
+
+fraud_rate:
+  threshold: 0.2           # flag above this rate
+  prior_weight: 10         # the registry rate counts as this many decided claims
+  flagged_decisions: [deny, REFER_TO_FIU]
+  window_days: 365
+
+similar_bills:
+  window_days: 90
+  tolerance_pct: 2.0       # amounts within this percentage count as near-identical
+  min_other_claimants: 3
+
+documents:
+  name_match_threshold: 0.8  # fuzzy match ratio for hospital and doctor names on documents
+
+many_hospitals: 3          # DOCTOR_MANY_HOSPITALS
+new_hospital_years: 2      # HOSPITAL_NEW

@@ -12,11 +12,10 @@ from pydantic import ValidationError
 from app import jobs
 from app.db.repos import DISEASES, open_repos
 from app.models import Claim, ClaimSubmission, DocumentInfo
-from app.settings import get_settings
 
 MAX_FILE_BYTES = 10 * 1024 * 1024
 MAX_FILES = 10
-ALLOWED_DOC_TYPES = {"medical_bill", "prescription", "medical_report", "other"}
+ALLOWED_DOC_TYPES = {"medical_bill", "prescription", "medical_report", "lab_report", "payment_receipt", "other"}
 
 
 async def read_documents(documents: list[UploadFile], types: list[str]) -> list[DocumentInfo]:
@@ -142,5 +141,8 @@ async def accept_submission(payload: str, documents: list[UploadFile], document_
     if first:
         store_rejected_claim(claim, docs, first[1], first[2])
         raise HTTPException(422, first[2])
-    jobs.start(claim, docs, get_settings().llm_enabled())
+    # The console's LLM analysis switch (server-side, Administrator-controlled) decides; read once per claim.
+    from app import runtime_settings
+
+    jobs.start(claim, docs, runtime_settings.llm_effective())
     return claim.claim_id

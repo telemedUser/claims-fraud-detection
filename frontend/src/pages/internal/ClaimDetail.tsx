@@ -6,9 +6,9 @@ import { Alert, Badge, Button, Spinner } from '../../components/ui'
 import { CHECK_OUTCOME_LABEL, cn, DECISION_LABEL, DOC_LABEL, fileSize, fmtDate, inr, ms } from '../../lib/utils'
 import { AGENT_ICON, agentTitle, DECISION_TONE, Panel, RichText, ScoreBar, ScoreRing, SEVERITY_TONE, SourceTag } from './common'
 
-type Props = { id: string; overview: Overview; client: ReturnType<typeof internalApi>; onBack: () => void }
+type Props = { id: string; overview: Overview; client: ReturnType<typeof internalApi>; onBack: () => void; onOpenClaimant?: (claimantId: string) => void }
 
-export default function ClaimDetail({ id, overview, client, onBack }: Props) {
+export default function ClaimDetail({ id, overview, client, onBack, onOpenClaimant }: Props) {
   const [d, setD] = useState<InternalDetail | null>(null)
   const [error, setError] = useState<string | null>(null)
 
@@ -42,9 +42,16 @@ export default function ClaimDetail({ id, overview, client, onBack }: Props) {
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <Button variant="ghost" onClick={onBack}><ArrowLeft className="size-4" aria-hidden /> All claims</Button>
-        <a href={`/claims/${d.claim_id}`} target="_blank" rel="noreferrer">
-          <Button variant="secondary" size="sm"><ExternalLink className="size-3.5" aria-hidden /> Customer report</Button>
-        </a>
+        <div className="flex gap-2">
+          {onOpenClaimant && typeof d.claim.claimant_id === 'string' && (
+            <Button variant="secondary" size="sm" onClick={() => onOpenClaimant(d.claim.claimant_id as string)}>
+              <UserRound className="size-3.5" aria-hidden /> User profile
+            </Button>
+          )}
+          <a href={`/claims/${d.claim_id}`} target="_blank" rel="noreferrer">
+            <Button variant="secondary" size="sm"><ExternalLink className="size-3.5" aria-hidden /> Customer report</Button>
+          </a>
+        </div>
       </div>
 
       {/* Header */}
@@ -283,14 +290,14 @@ function AgentCard({ r, overview, trace, delay }: { r: AgentResult; overview: Ov
       </div>
       <div className="mt-3">
         <div className="mb-1 flex justify-between text-[11px] text-slate-500">
-          <span>rules {Math.round(r.rule_score ?? r.score)} + LLM {Math.round(r.llm_points)}</span>
+          <span>{r.llm_used ? `rules ${Math.round(r.rule_score ?? r.score)} + LLM ${r.llm_points} (${llm.length} finding(s))` : 'score from rules'}</span>
           <span>{r.findings.length} findings</span>
         </div>
         <ScoreBar score={r.score} />
       </div>
 
       <FindingList title="Rule findings" items={rule} empty="No rule issues." />
-      {r.llm_used && <FindingList title="LLM findings" items={llm} empty="LLM found nothing new." />}
+      <FindingList title="LLM findings" items={llm} empty={r.llm_used ? 'LLM found nothing new.' : 'LLM did not review this agent (off, unavailable or invalid output).'} />
 
       {r.reasoning && (
         <div className={cn('mt-4 rounded-xl p-3 text-xs leading-relaxed ring-1', r.llm_used ? 'bg-violet-50/70 text-violet-950 ring-violet-100' : 'bg-slate-50 text-slate-600 ring-slate-200')}>

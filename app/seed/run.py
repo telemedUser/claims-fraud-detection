@@ -37,6 +37,10 @@ def _day(d: date | str) -> date:
     return date.fromisoformat(d) if isinstance(d, str) else d
 
 
+def _opt_day(d: date | str | None) -> date | None:
+    return None if d is None else _day(d)
+
+
 def _at(d: date) -> datetime:
     return datetime.combine(d, time(9, 0), tzinfo=timezone.utc)
 
@@ -92,7 +96,9 @@ def _seed_providers(s: Session) -> tuple[dict[str, m.Provider], dict[str, m.Doct
                 baseline_monthly_claims=h.get("baseline_monthly_claims"), gstin=h["tax_id"],
                 reference_source="synthetic seed")
             s.add(prov)
-        _fill(prov, address=h["address"], phone=h["phone"], specialties=list(h["specialties"]))
+        _fill(prov, address=h["address"], phone=h["phone"], specialties=list(h["specialties"]),
+              state_code=h.get("state_code"), bed_count=h.get("bed_count"),
+              empanelled_from=_opt_day(h.get("empanelled_from")), empanelled_to=_opt_day(h.get("empanelled_to")))
         s.flush()
         providers[code] = prov
     doctors: dict[str, m.Doctor] = {}
@@ -107,12 +113,18 @@ def _seed_providers(s: Session) -> tuple[dict[str, m.Provider], dict[str, m.Doct
                            specialities=[d["specialty"]])
             s.add(doc)
         _fill(doc, code=did, qualification=d["qualification"], registration_no=d["registration_no"],
-              claims_per_month=d["claims_per_month"], flagged_claims_ratio=d["flagged_claims_ratio"])
+              claims_per_month=d["claims_per_month"], flagged_claims_ratio=d["flagged_claims_ratio"],
+              licence_valid_to=_opt_day(d.get("licence_valid_to")))
         s.flush()
-        have = set(s.scalars(select(m.DoctorAffiliation.provider_id).where(m.DoctorAffiliation.doctor_id == doc.id)))
+        have = {a.provider_id: a for a in s.scalars(select(m.DoctorAffiliation).where(m.DoctorAffiliation.doctor_id == doc.id))}
+        dates = d.get("affiliation_dates", {})
         for pos, code in enumerate(d["hospital_ids"]):
-            if providers[code].id not in have:
-                s.add(m.DoctorAffiliation(doctor_id=doc.id, provider_id=providers[code].id, position=pos))
+            aff = have.get(providers[code].id)
+            if aff is None:
+                aff = m.DoctorAffiliation(doctor_id=doc.id, provider_id=providers[code].id, position=pos)
+                s.add(aff)
+            start, end = dates.get(code, (None, None))
+            _fill(aff, start_date=_opt_day(start), end_date=_opt_day(end))
         s.flush()
         doctors[did] = doc
     return providers, doctors
@@ -127,14 +139,30 @@ def _seed_history(s: Session, members, providers) -> None:
             if exists is not None:
                 continue
             prov = providers[h["hospital_id"]]
+            extra = sd.HISTORY_DETAILS.get(h["claim_id"], {})
             claim = m.Claim(
                 claim_ref=h["claim_id"], claimant_ref=claimant_id, member_id=members[claimant_id].id, policy_id=members[claimant_id].policy_id, provider_id=prov.id,
-                claimed_amount=_dec(h["amount"]), submitted_on=_at(h["date"]), status="DECIDED", is_test=True)
+                claimed_amount=_dec(h["amount"]), submitted_on=_at(h["date"]), status="DECIDED", is_test=True,
+                admission_date=extra.get("admission"), discharge_date=extra.get("discharge"), disease_code=extra.get("disease"))
             s.add(claim)
             s.flush()
+            if extra.get("decision"):
+                s.add(m.InvestigatorDecision(claim_id=claim.id, user_id=_system_user(s).id, decision=extra["decision"],
+                                             reason="Seeded historical outcome (synthetic data)."))
             s.add(m.Invoice(claim_id=claim.id, invoice_number=h["invoice_number"], invoice_date=h["date"],
                             gstin=prov.gstin, stated_total=_dec(h["amount"])))
     s.flush()
+
+
+def _system_user(s: Session) -> m.User:
+    """Inactive owner of seeded decisions (no usable password, role outside the console roles)."""
+    u = s.scalars(select(m.User).where(m.User.username == sd.SYSTEM_USER["username"])).first()
+    if u is None:
+        u = m.User(username=sd.SYSTEM_USER["username"], password_hash="!disabled", role=sd.SYSTEM_USER["role"],
+                   is_active=False)
+        s.add(u)
+        s.flush()
+    return u
 
 
 def _seed_surge(s: Session, members, providers) -> None:

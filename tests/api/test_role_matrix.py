@@ -28,6 +28,10 @@ PERMISSIONS = {
     ("POST", "/api/internal/claims"): ASSESS,
     ("POST", "/api/assess"): ASSESS,
     ("POST", "/api/internal/reset"): {"Administrator"},
+    ("GET", "/api/internal/settings"): ALL,
+    ("GET", "/api/internal/claimants"): ALL,
+    ("GET", "/api/internal/claimants/{claimant_id}"): ALL,
+    ("POST", "/api/internal/settings/llm"): {"Administrator"},
     ("POST", "/api/findings/{finding_id}/feedback"): {"Investigator", "Fraud_Team"},
     ("POST", "/api/claims/{claim_id}/decisions"): {"Investigator", "Fraud_Team"},
 }

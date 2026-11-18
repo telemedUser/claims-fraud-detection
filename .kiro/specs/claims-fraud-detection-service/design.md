@@ -13,7 +13,7 @@ Key design decisions:
 | PostgreSQL as the only stateful dependency (data, queue, audit) | One container to run. `SELECT ... FOR UPDATE SKIP LOCKED` gives a safe multi-worker queue without Redis or a broker. |
 | Check registry as the single source of truth for checks, use cases and agents | Drives orchestration, NOT_CHECKED stubs and the Coverage_Matrix. A test fails if they drift. |
 | Additive, saturating risk score over deduplicated findings | Monotone, bounded, explainable. Replaces the weighted-average plus 0.8 peak rule. |
-| LLM never scores, never confirms | Requirement 10.6. The LLM produces explanations, extracted fields and semantic comparisons that become capped POTENTIAL_ANOMALY or INCONCLUSIVE findings. |
+| LLM never confirms; its scored contribution is capped (changed 2026-11-21, see docs/CHANGELOG.md; Property 12 below is out of date) | Requirement 10.6. The LLM produces explanations, extracted fields and semantic comparisons that become capped POTENTIAL_ANOMALY or INCONCLUSIVE findings. |
 | Findings and audit events are append-only (DB triggers plus no mutating API) | Requirements 3.6 and 17.5, 17.8. |
 
 Research notes that informed the design:

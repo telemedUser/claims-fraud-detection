@@ -19,6 +19,8 @@ const SLOTS: { key: RequiredDoc; title: string; desc: string; required: boolean;
   { key: 'medical_bill', title: 'Final hospital bill', desc: 'Itemised bill with bill number and hospital stamp', required: true, icon: Receipt },
   { key: 'medical_report', title: 'Medical report / discharge summary', desc: 'Diagnosis, treatment and discharge notes', required: true, icon: FileText },
   { key: 'prescription', title: 'Prescription', desc: 'Doctor’s prescription for the treatment', required: false, icon: Pill },
+  { key: 'lab_report', title: 'Lab report', desc: 'Test results with the lab report number', required: false, icon: FileText },
+  { key: 'payment_receipt', title: 'Payment receipt', desc: 'Proof you paid the hospital, if not on the bill', required: false, icon: Receipt },
 ]
 
 export default function DocumentsStep({ state, update, showErrors }: StepProps) {
@@ -26,7 +28,7 @@ export default function DocumentsStep({ state, update, showErrors }: StepProps) 
   return (
     <div className="space-y-6">
       <StepTitle title="Upload documents" subtitle="Clear scans or the original PDFs from the hospital. PDF, JPG or PNG up to 10 MB each." />
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
         {SLOTS.map(({ key: slot, ...s }) => (
           <DropSlot
             key={slot}

@@ -52,7 +52,8 @@ def _parse_pdf_date(s: str | None):
 
 
 class DocumentScanAgent(Agent):
-    """Inspects uploaded files: type, duplicates, and PDF/image metadata."""
+    """Document forensics: completeness, file type, reuse, metadata, edits after generation, AI-generation markers,
+    and consistency of the printed content with the claim (docs/agents/document_scan.md)."""
     name = "document_scan"
 
     async def analyze(self, claim: Claim, documents: list[DocumentInfo]):
@@ -79,8 +80,11 @@ class DocumentScanAgent(Agent):
                 f.append(Finding(code="DOCUMENT_REUSED", severity="high", detail=f"{tag}: identical file was used in an earlier claim."))
             if doc.content_type == "application/pdf":
                 f.extend(self._scan_pdf(tag, doc, claim))
+                f.extend(_post_generation_checks(tag, doc, claim))
             else:
                 f.extend(self._scan_image(tag, doc, claim))
+            f.extend(_ai_marker_checks(tag, doc))
+        f.extend(_content_checks(claim, documents))
         return self.result(f)
 
     def _scan_pdf(self, tag, doc, claim):
@@ -126,3 +130,118 @@ class DocumentScanAgent(Agent):
         if not exif:
             out.append(Finding(code="METADATA_STRIPPED", severity="low", detail=f"{tag}: image has no EXIF data."))
         return out
+
+
+# ---------------------------------------------------------------- manipulation after generation, AI markers
+# Documented in docs/agents/document_scan.md. All indicators are potential anomalies (max medium).
+
+EDIT_ALTERNATIVES = ("alternative explanations: digital signatures, form filling and some PDF tools save a new "
+                     "revision; ask the provider for the original file")
+BILL_EDIT_GRACE_DAYS = 2
+
+
+def _pdf_meta(doc) -> dict:
+    try:
+        from pypdf import PdfReader
+        return dict(PdfReader(io.BytesIO(doc.data)).metadata or {})
+    except Exception:
+        return {}
+
+
+def _post_generation_checks(tag: str, doc, claim: Claim) -> list[Finding]:
+    """Changes made after the document was produced: extra PDF revisions, and a bill edited after its bill date."""
+    from app.core.pdf_forensics import revision_count
+
+    out: list[Finding] = []
+    revisions = revision_count(doc.data)
+    if revisions > 1:
+        out.append(Finding(code="DOC_EDITED_AFTER_GENERATION", severity="medium",
+                           detail=f"{tag}: the file has {revisions} saved revisions, so it was changed after it was first "
+                                  f"produced; {EDIT_ALTERNATIVES}."))
+    if doc.doc_type == "medical_bill":
+        modified = _parse_pdf_date(_pdf_meta(doc).get("/ModDate"))
+        bill_date = claim.invoice.invoice_date
+        if modified and (modified.date() - bill_date).days > BILL_EDIT_GRACE_DAYS:
+            out.append(Finding(code="DOC_MODIFIED_AFTER_BILL_DATE", severity="medium",
+                               detail=f"{tag}: last modified {modified.date()}, {(modified.date() - bill_date).days} days after "
+                                      f"the bill date {bill_date}; {ALTERNATIVE_EXPLANATIONS}."))
+    return out
+
+
+def _ai_marker_checks(tag: str, doc) -> list[Finding]:
+    from app.core.pdf_forensics import ai_markers
+
+    meta_values: list[str] = []
+    if doc.content_type == "application/pdf":
+        meta_values = [str(v) for v in _pdf_meta(doc).values()]
+    else:
+        try:
+            from PIL import Image
+            meta_values = [str(v) for v in Image.open(io.BytesIO(doc.data)).getexif().values()]
+        except Exception:
+            meta_values = []
+    found = ai_markers(doc.data, meta_values)
+    if not found:
+        return []
+    return [Finding(code="AI_GENERATION_MARKER", severity="medium",
+                    detail=f"{tag}: metadata names an AI generation tool or label ({', '.join(found[:3])}); hospital "
+                           f"documents are normally produced by a billing or records system. A marker is an indicator "
+                           f"only, and its absence does not prove a document is genuine.")]
+
+
+# ---------------------------------------------------------------- content: documents against the claim and each other
+
+def _content_checks(claim: Claim, documents: list[DocumentInfo]) -> list[Finding]:
+    """Compare what is printed on the documents with the claim. Names and policy numbers are compared locally
+    and never written into the finding text (rule findings can be sent to the LLM)."""
+    from app.core.doc_text import document_texts, fields
+    from app.core.text_match import name_match_score, normalise_id
+
+    texts = [(doc, fields(text)) for doc, text in document_texts(documents)]
+    if not texts:
+        return []
+    f: list[Finding] = []
+    files = lambda xs: ", ".join(d.filename for d, _ in xs)  # noqa: E731
+
+    off = [(d, x) for d, x in texts if x["patient"] and claim.claimant_name
+           and name_match_score(claim.claimant_name, x["patient"]) < 0.8]
+    if off:
+        f.append(Finding(code="DOC_PATIENT_MISMATCH", severity="medium",
+                         detail=f"{files(off)}: the patient name printed on the document does not match the policyholder."))
+    if claim.policy_number:
+        off = [(d, x) for d, x in texts if x["policy_number"] and normalise_id(x["policy_number"]) != normalise_id(claim.policy_number)]
+        if off:
+            f.append(Finding(code="DOC_POLICY_MISMATCH", severity="medium",
+                             detail=f"{files(off)}: the policy number printed on the document differs from the claim."))
+    off = [(d, x) for d, x in texts
+           if any(a != claim.admission_date for a in x["admitted"]) or any(z != claim.discharge_date for z in x["discharged"])]
+    if off:
+        shown = sorted({str(a) for _, x in off for a in x["admitted"] + x["discharged"]})
+        f.append(Finding(code="DOC_DATES_MISMATCH", severity="medium",
+                         detail=f"{files(off)}: admission/discharge dates on the document ({', '.join(shown)}) differ from "
+                                f"the claim ({claim.admission_date} to {claim.discharge_date})."))
+    off = [(d, x) for d, x in texts if x["diagnosis"] and claim.diagnosis
+           and max(name_match_score(claim.diagnosis, x["diagnosis"]), name_match_score(x["diagnosis"], claim.diagnosis)) < 0.7]
+    if off:
+        f.append(Finding(code="DOC_DIAGNOSIS_MISMATCH", severity="medium",
+                         detail=f"{files(off)}: the diagnosis on the document ({off[0][1]['diagnosis']}) differs from the claim "
+                                f"({claim.diagnosis})."))
+
+    bills = [(d, x) for d, x in texts if d.doc_type == "medical_bill"] or [(d, x) for d, x in texts if x["bill_number"]]
+    inv = claim.invoice
+    off = [(d, x) for d, x in bills if x["bill_number"] and normalise_id(x["bill_number"]) != normalise_id(inv.invoice_number)]
+    if off:
+        f.append(Finding(code="DOC_BILL_NUMBER_MISMATCH", severity="medium",
+                         detail=f"{files(off)}: bill number {off[0][1]['bill_number']} on the document differs from the claimed "
+                                f"bill {inv.invoice_number}."))
+    off = [(d, x) for d, x in bills if x["totals"] and all(abs(t - inv.total) > 1 for t in x["totals"])]
+    if off:
+        f.append(Finding(code="DOC_BILL_TOTAL_MISMATCH", severity="medium",
+                         detail=f"{files(off)}: the total on the bill ({', '.join(f'{t:,.2f}' for t in off[0][1]['totals'])}) "
+                                f"differs from the claimed bill total ({inv.total:,.2f})."))
+    off = [(d, x) for d, x in bills if x["bill_date"] and x["bill_date"] != inv.invoice_date]
+    if off:
+        f.append(Finding(code="DOC_BILL_DATE_MISMATCH", severity="low",
+                         detail=f"{files(off)}: bill date {off[0][1]['bill_date']} on the document differs from the claim "
+                                f"({inv.invoice_date})."))
+    return f

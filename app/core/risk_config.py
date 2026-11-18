@@ -60,6 +60,17 @@ class Thresholds(BaseModel):
     provider_volume_multiple: float = Field(gt=0)
 
 
+class LlmScoring(BaseModel):
+    """How LLM observations add to the score. LLM findings count as POTENTIAL_ANOMALY, so they use that status
+    multiplier, and they are capped per agent and in total so the rules stay the main signal."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = True
+    max_points_per_agent: float = Field(default=20.0, ge=0)
+    max_points_total: float = Field(default=30.0, ge=0)
+
+
 class RiskConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -70,6 +81,7 @@ class RiskConfig(BaseModel):
     bands: Bands
     thresholds: Thresholds
     gst_exempt_categories: list[str] = Field(default_factory=list)
+    llm: LlmScoring = Field(default_factory=LlmScoring)
 
     @property
     def scored_statuses(self) -> tuple[str, ...]:

@@ -34,7 +34,7 @@ class Claim(BaseModel):
     disease_id: Optional[str] = None
 
 
-DocType = Literal["medical_bill", "prescription", "medical_report", "other"]
+DocType = Literal["medical_bill", "prescription", "medical_report", "lab_report", "payment_receipt", "other"]
 
 
 class DocumentInfo(BaseModel):

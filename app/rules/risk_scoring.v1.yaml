@@ -1,4 +1,4 @@
-version: "risk-2025.1"
+﻿version: "risk-2025.1"
 label: "Ordering signal, not a probability"
 severity_points: {low: 10, medium: 25, high: 45}
 status_multiplier: {CONFIRMED_RULE_VIOLATION: 1.0, POTENTIAL_ANOMALY: 0.6}
@@ -10,3 +10,7 @@ thresholds:
   doc_modification_gap_hours: {invoice: 24, discharge_summary: 72, default: 48}
   provider_volume_multiple: 3.0
 gst_exempt_categories: [inpatient_room, consultation, nursing, diagnostics]
+llm:
+  enabled: true            # LLM observations add points (only when the console LLM switch is on)
+  max_points_per_agent: 15
+  max_points_total: 25   # below review_at (30): LLM alone cannot queue a claim

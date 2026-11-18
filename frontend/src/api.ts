@@ -27,7 +27,7 @@ export type ClaimForm = {
   claimed_amount: number
   invoice: Invoice
 }
-export type DocType = 'medical_bill' | 'prescription' | 'medical_report' | 'other'
+export type DocType = 'medical_bill' | 'prescription' | 'medical_report' | 'lab_report' | 'payment_receipt' | 'other'
 export type StageStatus = 'pending' | 'running' | 'done'
 export type Stage = { key: string; label: string; status: StageStatus; ai_review: boolean }
 export type OutcomeCode = 'approved' | 'under_review' | 'verification'
@@ -144,11 +144,79 @@ export type Overview = {
     rule: string
     severity_points: Record<Severity, number>
     max_llm_points_per_agent: number
+    max_llm_points_total: number
     llm_max_severity: string
     thresholds: Thresholds
   }
-  llm: { enabled: boolean; provider: string | null; models: string[] }
+  llm: { enabled: boolean; requested?: boolean; provider_configured?: boolean; provider: string | null; models: string[] }
   claims_processed: number
+}
+export type ProfileSignal = { code: string; severity: Severity; detail: string; claim_ids: string[] }
+export type ClaimantSummary = {
+  claimant_id: string
+  name: string
+  policy_number: string | null
+  plan: string | null
+  claims: number
+  total_claimed: number
+  last_claim: string | null
+  flagged_claims: number
+  signals: number
+  top_severity: Severity | null
+}
+export type ClaimantClaim = {
+  claim_id: string
+  submitted: string | null
+  admission: string | null
+  discharge: string | null
+  amount: number
+  hospital_id: string | null
+  hospital: string | null
+  doctor_id: string | null
+  disease: string | null
+  diagnosis: string | null
+  invoice_number: string | null
+  status: string
+  decision: string | null
+  is_test: boolean
+  stay_days: number | null
+  submission_lag_days: number | null
+  days_to_term_end: number | null
+  risk_score: number | null
+  queue: Decision | null
+  in_console: boolean
+}
+export type ClaimantProfile = {
+  claimant: { claimant_id: string; name: string; relation: string | null; dob: string | null; policy_number: string | null }
+  policy: { plan: string; sum_insured: number; valid_from: string; valid_to: string; network_hospital_ids: string[] } | null
+  metrics: {
+    claims: number
+    total_claimed: number
+    average_claim: number
+    largest_claim: number
+    hospitals: number
+    doctors: number
+    claims_last_90_days: number
+    claims_last_365_days: number
+    average_submission_lag_days: number | null
+    decisions: Record<string, number>
+    flagged_claims: number
+    claims_near_policy_end: number
+    first_claim: string | null
+    last_claim: string | null
+  }
+  signals: ProfileSignal[]
+  claims: ClaimantClaim[]
+  config_version: string
+}
+export type LlmSwitch = {
+  requested: boolean
+  provider_configured: boolean
+  effective: boolean
+  provider: string | null
+  source: 'default' | 'console'
+  updated_by: string | null
+  updated_at: string | null
 }
 
 // ---------------------------------------------------------------- client
@@ -259,4 +327,8 @@ export const internalApi = () => ({
   claims: () => authed<InternalSummary[]>('/api/internal/claims'),
   claim: (id: string) => authed<InternalDetail>(`/api/internal/claims/${encodeURIComponent(id)}`),
   reset: () => authed<{ status: string }>('/api/internal/reset', { method: 'POST' }),
+  settings: () => authed<{ llm_analysis: LlmSwitch }>('/api/internal/settings'),
+  claimants: (q?: string) => authed<ClaimantSummary[]>(`/api/internal/claimants${q ? `?q=${encodeURIComponent(q)}` : ''}`),
+  claimant: (id: string) => authed<ClaimantProfile>(`/api/internal/claimants/${encodeURIComponent(id)}`),
+  setLlm: (enabled: boolean) => authed<{ llm_analysis: LlmSwitch }>('/api/internal/settings/llm', json({ enabled })),
 })

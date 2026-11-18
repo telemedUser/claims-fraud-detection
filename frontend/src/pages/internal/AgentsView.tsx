@@ -46,7 +46,7 @@ export default function AgentsView({ overview }: { overview: Overview }) {
               <Badge tone="amber">medium {s.severity_points.medium}</Badge>
               <Badge tone="red">high {s.severity_points.high}</Badge>
             </div>
-            <p className="mt-2 text-xs text-slate-600">LLM: max {s.llm_max_severity}, at most +{s.max_llm_points_per_agent} per agent.</p>
+            <p className="mt-2 text-xs text-slate-600">LLM observations: max {s.llm_max_severity} severity, scored as potential anomalies (cap {s.max_llm_points_per_agent} per agent, {s.max_llm_points_total} per claim).</p>
           </div>
           <div>
             <div className="text-xs font-medium tracking-wide text-slate-500 uppercase">Decision thresholds</div>

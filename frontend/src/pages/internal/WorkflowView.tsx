@@ -96,7 +96,7 @@ export default function WorkflowView({ overview, claims, client, onOpenClaim }: 
                     {r && (
                       <div className="mt-2.5">
                         <div className="flex justify-between text-[11px] text-slate-600">
-                          <span>rules {Math.round(r.rule_score ?? r.score)} + LLM {Math.round(r.llm_points)}</span>
+                          <span>{r.llm_used ? `rules ${Math.round(r.rule_score ?? r.score)} + LLM ${r.llm_points} (${r.findings.filter((f) => f.source === 'llm').length} findings)` : `rules ${Math.round(r.score)}`}</span>
                           <span className={cn('font-semibold', { green: 'text-emerald-600', amber: 'text-amber-600', red: 'text-rose-600', slate: '' }[scoreTone(r.score)])}>{Math.round(r.score)}</span>
                         </div>
                         <ScoreBar score={r.score} className="mt-1" />
@@ -136,8 +136,8 @@ export default function WorkflowView({ overview, claims, client, onOpenClaim }: 
         <Panel title="How an agent works" icon={<BrainCircuit className="size-4 text-violet-600" aria-hidden />}>
           <ol className="space-y-3 text-sm text-slate-700">
             <Step n={1} title="Rule engine">Deterministic checks against registries, history and file metadata. Each finding adds points: low {overview.scoring.severity_points.low}, medium {overview.scoring.severity_points.medium}, high {overview.scoring.severity_points.high} (cap 100).</Step>
-            <Step n={2} title="LLM review">{overview.llm.enabled ? `${overview.llm.provider} (${overview.llm.models.join(' → ')})` : 'Disabled'} receives the claim and rule findings, calls lookup tools, and may add findings the rules can't express.</Step>
-            <Step n={3} title="Merge">LLM findings are capped at <b>{overview.scoring.llm_max_severity}</b> severity and add at most <b>+{overview.scoring.max_llm_points_per_agent}</b> points. On any LLM error the agent keeps its rule result.</Step>
+            <Step n={2} title="LLM review">{overview.llm.enabled ? `On: ${overview.llm.provider} (${overview.llm.models.join(' → ')})` : 'Off (console switch or no API key)'}. Receives the pseudonymised claim and rule findings, calls lookup tools, and may add observations the rules can't express.</Step>
+            <Step n={3} title="Merge">AI observations are capped at <b>{overview.scoring.llm_max_severity}</b> severity, shown to investigators and <b>scored</b>: each adds points as a potential anomaly, capped at {overview.scoring.max_llm_points_per_agent} per agent and {overview.scoring.max_llm_points_total} per claim, on top of the rule score. Invalid output or an LLM error leaves the rule result (no LLM points).</Step>
           </ol>
         </Panel>
         <Panel title="Tools available to the LLM" icon={<Wrench className="size-4 text-violet-600" aria-hidden />}>

@@ -112,6 +112,11 @@ class Provider(Base):
     baseline_monthly_claims: Mapped[float | None] = mapped_column(Float)
     gstin: Mapped[str | None] = mapped_column(String(15))
     reference_source: Mapped[str | None] = mapped_column(String(200))
+    # Registry fields used by the Provider Profile cross-checks (migration 0003).
+    state_code: Mapped[str | None] = mapped_column(String(2))  # GST state code of the hospital's address, e.g. "27"
+    bed_count: Mapped[int | None] = mapped_column(Integer)
+    empanelled_from: Mapped[date | None] = mapped_column(Date)  # insurer network membership period
+    empanelled_to: Mapped[date | None] = mapped_column(Date)
 
 
 class Doctor(Base):
@@ -126,15 +131,19 @@ class Doctor(Base):
     specialities: Mapped[Any] = mapped_column(JSONType, default=list)
     claims_per_month: Mapped[float | None] = mapped_column(Float)
     flagged_claims_ratio: Mapped[float | None] = mapped_column(Float)
+    licence_valid_to: Mapped[date | None] = mapped_column(Date)  # migration 0003
 
 
 class DoctorAffiliation(Base):
-    """A doctor can be attached to several hospitals; ``position`` keeps the listed order."""
+    """A doctor can be attached to several hospitals; ``position`` keeps the listed order.
+    ``start_date``/``end_date`` bound the affiliation (null = open-ended)."""
 
     __tablename__ = "doctor_affiliations"
     doctor_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("doctors.id"), primary_key=True)
     provider_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("providers.id"), primary_key=True, index=True)
     position: Mapped[int] = mapped_column(Integer, default=0)
+    start_date: Mapped[date | None] = mapped_column(Date)  # migration 0003
+    end_date: Mapped[date | None] = mapped_column(Date)
 
 
 # --------------------------------------------------------------------------- claims
@@ -401,6 +410,17 @@ class LLMCall(Base):
     field_names: Mapped[Any] = mapped_column(JSONType, default=list)  # names only, never values
     outcome: Mapped[str | None] = mapped_column(String(30))
     created_at: Mapped[datetime] = _ts(default=True)
+
+
+class AppSetting(Base):
+    """Server-side runtime settings changed from the console (for example the LLM analysis switch).
+    Every change is also written to the audit log. Migration 0004."""
+
+    __tablename__ = "app_settings"
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    value: Mapped[Any] = mapped_column(JSONType)
+    updated_by: Mapped[str | None] = mapped_column(String(64))  # user id, never a name
+    updated_at: Mapped[datetime] = _ts(default=True)
 
 
 class AuditEvent(Base):

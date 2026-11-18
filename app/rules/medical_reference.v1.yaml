@@ -1,0 +1,134 @@
+# Clinical reference for the Medical Review agent (app/agents/medical_review.py). Documented in
+# docs/agents/medical_review.md. ILLUSTRATIVE reference data for fraud screening, not medical advice:
+# a finding means "check this with a clinician", never "this treatment is wrong".
+version: "medical-2026.1"
+
+# Medicine classes treated as supportive care for any condition (never "unrelated").
+supportive_classes: [antipyretic, analgesic, nsaid, opioid, gastro, antiemetic, supportive]
+
+# Keyword (lower case, matched inside the medicine name) -> class.
+medicines:
+  paracetamol: antipyretic
+  acetaminophen: antipyretic
+  dolo: antipyretic
+  ibuprofen: nsaid
+  diclofenac: nsaid
+  aceclofenac: nsaid
+  naproxen: nsaid
+  ketorolac: nsaid
+  aspirin: nsaid
+  tramadol: opioid
+  morphine: opioid
+  fentanyl: opioid
+  amoxicillin: antibiotic
+  clavulan: antibiotic
+  azithromycin: antibiotic
+  ceftriaxone: antibiotic
+  cefixime: antibiotic
+  cefuroxime: antibiotic
+  ciprofloxacin: antibiotic
+  levofloxacin: antibiotic
+  moxifloxacin: antibiotic
+  doxycycline: antibiotic
+  metronidazole: antibiotic
+  piperacillin: antibiotic
+  meropenem: antibiotic
+  linezolid: antibiotic
+  pantoprazole: gastro
+  omeprazole: gastro
+  rabeprazole: gastro
+  famotidine: gastro
+  ondansetron: antiemetic
+  domperidone: antiemetic
+  tamsulosin: alpha_blocker
+  oseltamivir: antiviral
+  prednisolone: steroid
+  dexamethasone: steroid
+  metformin: antidiabetic
+  insulin: antidiabetic
+  glimepiride: antidiabetic
+  atorvastatin: statin
+  rosuvastatin: statin
+  amlodipine: antihypertensive
+  telmisartan: antihypertensive
+  tropicamide: ophthalmic
+  ors: supportive
+  multivitamin: supportive
+
+# Procedure keywords that are characteristic of one condition (used to spot a treatment billed for the wrong one).
+# Intensive services that are unusual for a mild condition.
+intensive_services: [icu, intensive care, ventilator, ventilation, mri, ct scan, dialysis]
+
+diseases:
+  appendicitis:
+    icd10: [K35, K36, K37]
+    primary_icd10: K35.8
+    expected_classes: [antibiotic, analgesic]
+    not_indicated_classes: []
+    procedures: [appendectomy, appendicectomy]
+    surgical: true
+    atypical_services: [ventilator, dialysis]
+  viral_fever:
+    icd10: [B34, B33, R50]
+    primary_icd10: B34.9
+    expected_classes: [antipyretic]
+    not_indicated_classes: [antibiotic]
+    procedures: []
+    surgical: false
+    atypical_services: [icu, intensive care, ventilator, ventilation, mri, ct scan, dialysis]
+  dengue:
+    icd10: [A90, A91, A97]
+    primary_icd10: A97.0
+    expected_classes: [antipyretic]
+    not_indicated_classes: [nsaid]
+    procedures: []
+    surgical: false
+    atypical_services: [mri, ventilator]
+  pneumonia:
+    icd10: [J12, J13, J14, J15, J16, J17, J18]
+    primary_icd10: J18.9
+    expected_classes: [antibiotic]
+    not_indicated_classes: []
+    procedures: []
+    surgical: false
+    atypical_services: [mri, dialysis]
+  fracture:
+    icd10: [S42, S52, S62, S72, S82, S92]
+    primary_icd10: S52.5
+    expected_classes: [analgesic]
+    not_indicated_classes: []
+    procedures: [orif, open reduction, internal fixation, plating, nailing, k-wire, plaster cast]
+    surgical: true
+    atypical_services: [dialysis]
+  cataract:
+    icd10: [H25, H26, H28]
+    primary_icd10: H25.9
+    expected_classes: []
+    not_indicated_classes: []
+    procedures: [phacoemulsification, phaco, intraocular lens, iol, cataract extraction, sics]
+    surgical: true
+    atypical_services: [icu, intensive care, ventilator, dialysis]
+  kidney_stone:
+    icd10: [N20, N21, N23]
+    primary_icd10: N20.0
+    expected_classes: [analgesic]
+    not_indicated_classes: []
+    procedures: [lithotripsy, eswl, ureteroscopy, pcnl, rirs]
+    surgical: true
+    atypical_services: [ventilator]
+  cosmetic:
+    icd10: [Z41]
+    primary_icd10: Z41.1
+    expected_classes: []
+    not_indicated_classes: []
+    procedures: [rhinoplasty, liposuction, blepharoplasty, abdominoplasty]
+    surgical: true
+    atypical_services: [icu, ventilator]
+  dental:
+    icd10: [K00, K01, K02, K03, K04, K05, K06, K07, K08]
+    primary_icd10: K02.9
+    expected_classes: []
+    not_indicated_classes: []
+    procedures: [root canal, extraction, scaling, filling]
+    surgical: false
+    atypical_services: [icu, ventilator, mri, dialysis]

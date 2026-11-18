@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { Building2, FileSearch, Receipt, UserRound, type LucideIcon } from 'lucide-react'
+import { Building2, FileSearch, Receipt, Stethoscope, UserRound, type LucideIcon } from 'lucide-react'
 import type { Finding, Overview } from '../../api'
 import { Badge, type Tone } from '../../components/ui'
 import { cn, scoreTone } from '../../lib/utils'
@@ -9,6 +9,7 @@ export const AGENT_ICON: Record<string, LucideIcon> = {
   claimant_profile: UserRound,
   document_scan: FileSearch,
   invoice_check: Receipt,
+  medical_review: Stethoscope,
 }
 
 export const agentTitle = (o: Overview, name: string) => o.agents.find((a) => a.name === name)?.title ?? name
