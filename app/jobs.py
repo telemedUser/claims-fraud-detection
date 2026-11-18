@@ -37,6 +37,11 @@ def _new_job(claim: Claim, docs: list[DocumentInfo], use_llm: bool) -> dict:
                       for d in docs],
         "stages": {s: {"status": "pending", "detail": None, "started_ms": None, "finished_ms": None} for s in STAGES},
         "events": [], "assessment": None, "error": None, "_t0": time.perf_counter(),
+        # Uploaded bytes, same order as "documents". Served only through the role-protected documents route
+        # and never included in a view. Lives and dies with the in-memory job.
+        "_files": [d.data for d in docs],
+        # Latest human decision (approve / deny) recorded by an investigator, or None while pending.
+        "review": None,
     }
     JOBS[claim.claim_id] = job
     return job
@@ -100,7 +105,8 @@ def internal_summary(job: dict) -> dict:
             "hospital": hosp.get("name", claim.hospital_id), "diagnosis": claim.diagnosis,
             "claimed_amount": claim.claimed_amount, "use_llm": job["use_llm"],
             "risk_score": a.risk_score if a else None, "decision": a.decision if a else None,
-            "duration_ms": a.orchestration.total_duration_ms if a else None}
+            "duration_ms": a.orchestration.total_duration_ms if a else None,
+            "review": job.get("review")}
 
 
 def internal_detail(job: dict) -> dict:

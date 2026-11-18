@@ -18,6 +18,7 @@ from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app import jobs
 from app.api.auth import CurrentUser
 from app.api.deps import require_roles
 from app.db import audit
@@ -103,6 +104,11 @@ def record_decision(claim_id: str, body: DecisionIn,
                            detail={"assessment_id": str(ra_id) if ra_id else None, "status": DECIDED,
                                    "count": count, "role": user.role})
         session.refresh(row)
+        # Mirror the latest decision onto the in-memory job so the console list and customer view show it.
+        job = jobs.JOBS.get(claim.claim_ref or "")
+        if job is not None:
+            job["review"] = {"decision": row.decision, "reason": row.reason, "by": user.username,
+                             "role": user.role, "at": row.created_at.isoformat()}
         return DecisionOut(id=str(row.id), claim_id=claim.claim_ref or str(claim.id), decision=row.decision,
                            reason=row.reason, notes=row.notes,
                            risk_assessment_id=str(ra_id) if ra_id else None, user_id=str(row.user_id),

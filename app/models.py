@@ -101,6 +101,8 @@ class Orchestration(BaseModel):
     score_rule: str
     thresholds: dict[str, int]
     decision_reason: str
+    rule_score: float = 0  # claim-level points from rule findings (before the cap with LLM points)
+    llm_score: float = 0  # claim-level LLM points after the per-agent and per-claim caps
 
 
 class FraudAssessment(BaseModel):

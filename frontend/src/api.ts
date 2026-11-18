@@ -31,7 +31,30 @@ export type DocType = 'medical_bill' | 'prescription' | 'medical_report' | 'lab_
 export type StageStatus = 'pending' | 'running' | 'done'
 export type Stage = { key: string; label: string; status: StageStatus; ai_review: boolean }
 export type OutcomeCode = 'approved' | 'under_review' | 'verification'
+export type Level = 'green' | 'amber' | 'red'
+export type NextStep = {
+  type: 'none' | 'wait' | 'resubmit' | 'call_helpline'
+  level: Level
+  title: string
+  detail: string
+  documents: { kind: string; label: string; reason: string }[]
+  helpline: { number: string; hours: string; email: string; reference: string }
+}
+export type TimelineStep = { key: string; label: string; detail: string; date: string | null; state: 'done' | 'current' | 'upcoming'; expected?: string }
+export type Insights = {
+  amounts?: { claimed: number; bill_total: number; items_sum: number; claim_vs_bill: number; bill_vs_items: number }
+  stay: { days: number; per_day: number }
+  coverage: { plan: string | null; sum_insured: number | null; claimed_pct: number | null; valid_to: string | null }
+  bill: { invoice_number: string; invoice_date: string; total: number; items: { description: string; amount: number; share: number }[] }
+  checklist: { doc_type: DocType; label: string; required: boolean; received: boolean }[]
+  tips: string[]
+}
 export type CustomerReport = {
+  level: Level
+  next_step: NextStep
+  timeline: TimelineStep[]
+  insights_url: string
+  insights: Insights
   outcome: { code: OutcomeCode; title: string; message: string; next_steps: string[] }
   checks: { label: string; outcome: 'no_issues' | 'unavailable' | 'simulated' }[]
   claim: {
@@ -101,6 +124,8 @@ export type Orchestration = {
   score_rule: string
   thresholds: Thresholds
   decision_reason: string
+  rule_score: number
+  llm_score: number
 }
 export type Assessment = {
   claim_id: string
@@ -123,7 +148,10 @@ export type InternalSummary = {
   risk_score: number | null
   decision: Decision | null
   duration_ms: number | null
+  review: Review | null
 }
+export type HumanDecision = 'approve' | 'deny'
+export type Review = { decision: HumanDecision | string; reason: string; by: string; role: Role; at: string }
 export type StageState = { status: StageStatus; detail: string | null; started_ms: number | null; finished_ms: number | null }
 export type JobEvent = { t_ms: number; stage: string; status: string; info: Record<string, unknown> }
 export type InternalDetail = InternalSummary & {
@@ -331,4 +359,24 @@ export const internalApi = () => ({
   claimants: (q?: string) => authed<ClaimantSummary[]>(`/api/internal/claimants${q ? `?q=${encodeURIComponent(q)}` : ''}`),
   claimant: (id: string) => authed<ClaimantProfile>(`/api/internal/claimants/${encodeURIComponent(id)}`),
   setLlm: (enabled: boolean) => authed<{ llm_analysis: LlmSwitch }>('/api/internal/settings/llm', json({ enabled })),
+  decide: (id: string, decision: HumanDecision, reason: string) =>
+    authed<{ decision: string; claim_status: string; created_at: string }>(`/api/claims/${encodeURIComponent(id)}/decisions`, json({ decision, reason })),
+  /** The uploaded file as a Blob. Fetched with the Bearer token, so it can't be a plain <a href>/<iframe src>. */
+  document: async (id: string, index: number): Promise<Blob> => {
+    const token = tokenStore.get()
+    let res: Response
+    try {
+      res = await fetch(`/api/internal/claims/${encodeURIComponent(id)}/documents/${index}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      })
+    } catch {
+      throw new ApiError(0, 'We could not reach the server.')
+    }
+    if (res.status === 401) {
+      tokenStore.clear()
+      onUnauthorized?.()
+    }
+    if (!res.ok) throw new ApiError(res.status, res.status === 404 ? 'This document is no longer available.' : 'Could not load the document.')
+    return res.blob()
+  },
 })

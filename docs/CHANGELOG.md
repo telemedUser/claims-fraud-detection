@@ -2,6 +2,30 @@
 
 Changes on `feature/fraud-detection-service`, newest first. Each entry lists what changed, why, how it was verified, and any follow-up.
 
+## 2026-11-21: Internal console score display synced; blue and white theme
+
+### Fixed
+- **"How the score was decided" (claim page)** still showed the retired weighted-average model ("Weighted avg", "0.8 × peak"). It now shows rules, LLM and agent score per agent, and Rule points + LLM points = Final, with "capped at 100" when the cap applies.
+- **Workflow overlay** stayed on the claim that was newest when the page loaded. It now follows the latest claim by default (claims submitted from the demo journey appear within 3 seconds); picking a claim pins it.
+- **Agent lines** read "rules 100 + LLM 5 → max 100" when the per-agent cap applies, so the numbers add up. Scoring node text describes rules + capped LLM points.
+- **API:** `orchestration.rule_score` and `orchestration.llm_score` added (claim-level points before the 100 cap).
+- Removed the meaningless "weight 1" labels; finding badges no longer stretch into ovals on long findings.
+
+### Changed
+- **Theme:** blue and white console (blue header, white panels, light blue background); LLM accents use a deeper royal blue instead of violet. Risk colours (green, amber, red) are kept because they carry meaning.
+- **Fonts:** Inter (body) and Plus Jakarta Sans (headings), self-hosted through `@fontsource-variable` packages, so no third-party font CDN is called.
+
+### Verified
+- Targeted tests: 40 passed. Frontend build OK. Screenshots of Workflow and claim pages checked after a live suspicious claim.
+## 2026-11-21: Customer check label "Specialist review"
+
+### Changed
+- **Label renamed:** the customer check label "Verification unavailable" is now **"Specialist review"**. Customers read the old label as a system failure, although it is shown whenever a check flags something for a person to look at (or, rarely, when a check did not complete). The internal code stays `unavailable`, so the API shape is unchanged.
+- **Customer result page:** the hover text now says a team member will look at that part of the claim and that it is not a decision. The extra note under the check list is removed, and the icon is a clock instead of a warning sign.
+- **Spec:** requirement 8.3 and its clarification, design Property 26 and task 1.2 are amended. Invoice_Authenticity_State (requirement 13.5) keeps its own "Verification unavailable" state.
+
+### Verified
+- Targeted tests: 38 passed (customer view, customer wording, defect regressions). Frontend build OK.
 ## 2026-11-21: LLM findings now add to the score
 
 ### Changed

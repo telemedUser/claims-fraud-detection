@@ -56,9 +56,9 @@ export function SourceTag({ source }: { source: Finding['source'] }) {
 
 export function Panel({ title, icon, actions, children, className }: { title: ReactNode; icon?: ReactNode; actions?: ReactNode; children: ReactNode; className?: string }) {
   return (
-    <section className={cn('rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200', className)}>
+    <section className={cn('rounded-2xl bg-white p-5 shadow-[0_1px_2px_rgb(0_56_100/0.06),0_4px_16px_-8px_rgb(0_56_100/0.12)] ring-1 ring-indigo-100', className)}>
       <div className="mb-4 flex items-center justify-between gap-3">
-        <h2 className="flex items-center gap-2 text-sm font-semibold text-slate-900">{icon}{title}</h2>
+        <h2 className="flex items-center gap-2 text-[15px] font-semibold text-indigo-950">{icon}{title}</h2>
         {actions}
       </div>
       {children}

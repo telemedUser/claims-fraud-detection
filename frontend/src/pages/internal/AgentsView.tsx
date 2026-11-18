@@ -12,13 +12,13 @@ export default function AgentsView({ overview }: { overview: Overview }) {
           const Icon = AGENT_ICON[a.name]
           return (
             <Panel key={a.name} title={a.title} icon={<span className="grid size-7 place-items-center rounded-lg bg-indigo-50"><Icon className="size-4 text-indigo-600" aria-hidden /></span>}
-              actions={<Badge tone="indigo">weight {a.weight}</Badge>}>
+              actions={<Badge tone="indigo">{a.checks.length} checks</Badge>}>
               <p className="text-sm text-slate-700">{a.purpose}</p>
               <div className="mt-4">
                 <div className="mb-1.5 text-xs font-medium tracking-wide text-slate-500 uppercase">Rule checks ({a.checks.length})</div>
                 <div className="flex flex-wrap gap-1.5">
                   {a.checks.map((c) => (
-                    <code key={c} className="rounded-md bg-slate-100 px-1.5 py-0.5 text-[11px] text-slate-700">{c}</code>
+                    <code key={c} className="rounded-md bg-indigo-50 px-1.5 py-0.5 text-[11px] text-indigo-900 ring-1 ring-indigo-100">{c}</code>
                   ))}
                 </div>
               </div>
@@ -33,11 +33,11 @@ export default function AgentsView({ overview }: { overview: Overview }) {
           )
         })}
       </div>
-      <Panel title="Scoring model" icon={<Scale className="size-4 text-amber-600" aria-hidden />}>
+      <Panel title="Scoring model" icon={<Scale className="size-4 text-indigo-600" aria-hidden />}>
         <div className="grid gap-6 text-sm md:grid-cols-3">
           <div>
             <div className="text-xs font-medium tracking-wide text-slate-500 uppercase">Formula</div>
-            <code className="mt-1 block rounded-lg bg-slate-50 p-2 text-xs text-slate-800">{s.rule}</code>
+            <code className="mt-1 block rounded-lg bg-indigo-50/60 p-2 text-xs text-indigo-950 ring-1 ring-indigo-100">{s.rule}</code>
           </div>
           <div>
             <div className="text-xs font-medium tracking-wide text-slate-500 uppercase">Severity points</div>

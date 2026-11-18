@@ -3,7 +3,7 @@ import { LoaderCircle, ShieldCheck } from 'lucide-react'
 import { cn } from '../lib/utils'
 
 type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
-  variant?: 'primary' | 'secondary' | 'ghost' | 'danger' | 'dark'
+  variant?: 'primary' | 'secondary' | 'ghost' | 'danger' | 'success' | 'dark'
   size?: 'sm' | 'md' | 'lg'
   loading?: boolean
 }
@@ -14,14 +14,15 @@ export function Button({ variant = 'primary', size = 'md', loading, className, c
     secondary: 'bg-white text-indigo-700 ring-1 ring-inset ring-indigo-600 hover:bg-indigo-50',
     ghost: 'text-indigo-700 hover:bg-indigo-50',
     danger: 'bg-rose-600 text-white hover:bg-rose-700',
+    success: 'bg-emerald-600 text-white hover:bg-emerald-700',
     dark: 'bg-white/10 text-white ring-1 ring-inset ring-white/15 hover:bg-white/20',
   }[variant]
-  const s = { sm: 'h-8 px-3 text-sm', md: 'h-10 px-7 text-sm', lg: 'h-12 px-8 text-base' }[size]
+  const s = { sm: 'h-9 px-4 text-sm', md: 'h-10 px-7 text-sm', lg: 'h-12 px-8 text-base' }[size]
   return (
     <button
       type={type}
       className={cn(
-        'inline-flex items-center justify-center gap-2 rounded-sm font-semibold transition-colors',
+        'inline-flex shrink-0 items-center justify-center gap-2 rounded-sm font-semibold whitespace-nowrap transition-colors',
         'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600',
         'disabled:cursor-not-allowed disabled:opacity-50',
         v,
@@ -58,7 +59,7 @@ export function Field({
 }) {
   return (
     <div className={className}>
-      <label htmlFor={htmlFor} className="mb-1.5 block text-sm font-bold text-slate-700">
+      <label htmlFor={htmlFor} className="mb-1.5 block text-sm leading-5 font-bold text-slate-700">
         {label}
       </label>
       {children}

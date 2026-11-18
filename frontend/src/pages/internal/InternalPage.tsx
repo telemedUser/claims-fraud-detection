@@ -73,7 +73,7 @@ export default function InternalPage() {
     return () => setUnauthorizedHandler(null)
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  if (checking) return <div className="min-h-dvh bg-slate-950" aria-busy="true" />
+  if (checking) return <div className="min-h-dvh bg-indigo-900" aria-busy="true" />
   if (!me || !overview) return <LoginGate onSubmit={signIn} error={authError} />
   return <Console me={me} overview={overview} client={client} onSignOut={() => clearSession(null)} />
 }
@@ -91,7 +91,7 @@ function LoginGate({ onSubmit, error }: { onSubmit: (u: string, p: string) => Pr
     setPassword('')
   }
   return (
-    <div className="grid min-h-dvh place-items-center bg-slate-950 px-4">
+    <div className="grid min-h-dvh place-items-center bg-gradient-to-br from-indigo-900 via-indigo-800 to-indigo-600 px-4">
       <Card className="w-full max-w-sm p-6">
         <Logo subtitle="Fraud Intelligence Console" />
         <h1 className="mt-6 text-lg font-semibold text-slate-900">Staff sign-in</h1>
@@ -114,7 +114,7 @@ function LoginGate({ onSubmit, error }: { onSubmit: (u: string, p: string) => Pr
 }
 
 function Console({ me, overview: initial, client, onSignOut }: { me: Me; overview: Overview; client: ReturnType<typeof internalApi>; onSignOut: () => void }) {
-  const [tab, setTab] = useState<Tab>('workflow')
+  const [tab, setTab] = useState<Tab>('claims')
   const [overview, setOverview] = useState(initial)
   const [claims, setClaims] = useState<InternalSummary[]>([])
   const [selected, setSelected] = useState<string | null>(null)
@@ -156,9 +156,9 @@ function Console({ me, overview: initial, client, onSignOut }: { me: Me; overvie
   }
 
   const allTabs: { id: Tab; label: string; icon: typeof Workflow }[] = [
+    { id: 'claims', label: `Claims (${claims.length})`, icon: LayoutList },
     { id: 'workflow', label: 'Workflow', icon: Workflow },
     { id: 'agents', label: 'Agents', icon: Bot },
-    { id: 'claims', label: `Claims (${claims.length})`, icon: LayoutList },
     { id: 'claimants', label: 'Users', icon: UsersRound },
   ]
   const tabs = allTabs.filter((t) => TAB_ROLES[t.id].includes(me.role))
@@ -166,8 +166,8 @@ function Console({ me, overview: initial, client, onSignOut }: { me: Me; overvie
   const canReset = me.role === 'Administrator'
 
   return (
-    <div className="min-h-dvh bg-slate-100">
-      <header className="bg-slate-950 text-white">
+    <div className="min-h-dvh bg-[#f4f8fc]">
+      <header className="bg-gradient-to-r from-indigo-900 via-indigo-800 to-indigo-700 text-white shadow-sm">
         <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4 px-4 py-4 sm:px-6">
           <Logo dark subtitle="Fraud Intelligence Console · internal" />
           <div className="flex flex-wrap items-center gap-2 text-xs">
@@ -175,7 +175,7 @@ function Console({ me, overview: initial, client, onSignOut }: { me: Me; overvie
             <a href="/?demo=1" target="_blank" rel="noreferrer">
               <Button variant="dark" size="sm"><ExternalLink className="size-3.5" aria-hidden /> Customer journey (demo)</Button>
             </a>
-            <span className="rounded-full bg-slate-800 px-2.5 py-1 text-slate-200 ring-1 ring-slate-700" data-testid="whoami">{me.username} · {ROLE_LABEL[me.role]}</span>
+            <span className="rounded-full bg-white/10 px-2.5 py-1 text-white ring-1 ring-white/20" data-testid="whoami">{me.username} · {ROLE_LABEL[me.role]}</span>
             {canReset && <Button variant="dark" size="sm" onClick={reset} loading={resetting}><RotateCcw className="size-3.5" aria-hidden /> Reset demo data</Button>}
             <Button variant="dark" size="sm" onClick={onSignOut}><LogOut className="size-3.5" aria-hidden /> Sign out</Button>
           </div>
@@ -184,7 +184,7 @@ function Console({ me, overview: initial, client, onSignOut }: { me: Me; overvie
           {tabs.map((t) => (
             <button key={t.id} type="button" onClick={() => setTab(t.id)} aria-current={activeTab === t.id ? 'page' : undefined}
               className={cn('flex items-center gap-2 rounded-t-xl px-4 py-2.5 text-sm font-medium transition',
-                activeTab === t.id ? 'bg-slate-100 text-slate-900' : 'text-slate-400 hover:text-white')}>
+                activeTab === t.id ? 'bg-[#f4f8fc] text-indigo-900' : 'text-indigo-100/80 hover:bg-white/10 hover:text-white')}>
               <t.icon className="size-4" aria-hidden /> {t.label}
             </button>
           ))}
@@ -194,7 +194,7 @@ function Console({ me, overview: initial, client, onSignOut }: { me: Me; overvie
         {activeTab === 'workflow' && <WorkflowView overview={overview} claims={claims} client={client} onOpenClaim={openClaim} />}
         {activeTab === 'agents' && <AgentsView overview={overview} />}
         {activeTab === 'claims' && (
-          <ClaimsView overview={overview} claims={claims} client={client} selected={selected} onSelect={setSelected} onOpenClaimant={openClaimant} />
+          <ClaimsView me={me} overview={overview} claims={claims} client={client} selected={selected} onSelect={setSelected} onOpenClaimant={openClaimant} />
         )}
         {activeTab === 'claimants' && <ClaimantsView client={client} selected={claimant} onSelect={setClaimant} onOpenClaim={openClaim} />}
       </main>
@@ -236,13 +236,13 @@ function LlmToggle({ client, canChange, model, onChange }: {
   return (
     <span className="flex items-center gap-2" data-testid="llm-toggle">
       <label className={cn('flex items-center gap-2 rounded-full px-2.5 py-1 ring-1',
-        state.effective ? 'bg-violet-500/15 text-violet-100 ring-violet-400/30' : 'bg-slate-800 text-slate-300 ring-slate-700',
+        state.effective ? 'bg-white/15 text-white ring-white/30' : 'bg-white/5 text-indigo-100 ring-white/15',
         canChange ? 'cursor-pointer' : 'cursor-default')}
         title={canChange ? 'Applies to every claim submitted after the change' : 'Only an Administrator can change this'}>
         <input type="checkbox" role="switch" className="peer sr-only" checked={on} disabled={!canChange || busy}
           onChange={toggle} aria-label="Use LLM analysis for submitted claims" />
-        <span aria-hidden className={cn('relative h-4 w-7 rounded-full transition', on ? 'bg-violet-500' : 'bg-slate-600',
-          'peer-focus-visible:ring-2 peer-focus-visible:ring-violet-300')}>
+        <span aria-hidden className={cn('relative h-4 w-7 rounded-full transition', on ? 'bg-sky-400' : 'bg-white/25',
+          'peer-focus-visible:ring-2 peer-focus-visible:ring-white')}>
           <span className={cn('absolute top-0.5 size-3 rounded-full bg-white transition-all', on ? 'left-3.5' : 'left-0.5')} />
         </span>
         {busy ? 'Saving…' : label}

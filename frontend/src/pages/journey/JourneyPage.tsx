@@ -111,7 +111,7 @@ export default function JourneyPage() {
               <b>Demo mode.</b> Prefill the journey with a generated test case and its documents.
             </span>
           </div>
-          <div className="flex gap-2">
+          <div className="flex shrink-0 gap-2">
             <Button size="sm" variant="secondary" loading={demoLoading === 'clean'} onClick={() => fillDemo('clean')}>
               Genuine claim
             </Button>
@@ -124,7 +124,7 @@ export default function JourneyPage() {
 
       <Stepper step={step} onSelect={(i) => i < step && goTo(i)} />
 
-      <Card className="mt-6 overflow-hidden border-0 ring-0">
+      <Card className="mt-6 overflow-hidden px-4 sm:px-8">
         <AnimatePresence mode="wait">
           <motion.div
             key={step}
@@ -153,7 +153,7 @@ export default function JourneyPage() {
               Next <ArrowRight className="size-4" aria-hidden />
             </Button>
           ) : (
-            <Button onClick={submit} loading={submitting} size="lg">
+            <Button onClick={submit} loading={submitting}>
               <Send className="size-4" aria-hidden /> Submit claim
             </Button>
           )}

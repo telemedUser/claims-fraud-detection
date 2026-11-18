@@ -31,7 +31,7 @@ export default function PolicyStep({ state, update, showErrors }: StepProps) {
   return (
     <div>
       <StepTitle title="Find your policy" subtitle="We use your policy to show the hospitals and treatments it covers." />
-      <form onSubmit={lookup} className="grid gap-4 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
+      <form onSubmit={lookup} className="grid gap-4 sm:grid-cols-[1fr_1fr_auto] sm:items-start">
         <Field label="Policy number" htmlFor="policy" hint="Printed on your health card, e.g. POL-1001">
           <Input
             id="policy"
@@ -44,7 +44,8 @@ export default function PolicyStep({ state, update, showErrors }: StepProps) {
         <Field label="Policyholder date of birth" htmlFor="dob" hint="Used to verify it's you">
           <Input id="dob" type="date" value={state.dob} onChange={(e) => update({ dob: e.target.value, policy: null })} />
         </Field>
-        <Button type="submit" loading={loading} className="sm:mb-5">
+        {/* top offset = label line (20px) + label margin (6px), so the button lines up with the inputs */}
+        <Button type="submit" loading={loading} className="sm:mt-[26px]">
           <Search className="size-4" aria-hidden /> Find policy
         </Button>
       </form>

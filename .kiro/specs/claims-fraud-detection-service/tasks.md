@@ -32,7 +32,7 @@ Environment notes for every task:
 
   - [x] 1.2 Remove "Verified" wording from customer output (defect 1)
     - Delete `VERIFIED_BELOW` and rewrite `OUTCOMES` text in `app/jobs.py` to "received" language
-    - Limit customer check labels to "No issues found", "Verification unavailable" or "SIMULATED"
+    - Limit customer check labels to "No issues found", "Specialist review" (was "Verification unavailable") or "SIMULATED"
     - Update `frontend/src/pages/ReportPage.tsx` and journey pages that show "Verified" or "passed all automated checks"
     - _Requirements: 8.3, 8.4, 8.5_
 

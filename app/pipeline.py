@@ -150,7 +150,7 @@ async def assess_claim(claim: Claim, docs: list[DocumentInfo], use_llm: bool = T
         weighted_score=final, peak_agent=peak.agent, peak_score=peak.score, peak_floor=0.0, final_score=final,
         score_rule="final = min(100, rule points + capped LLM points); points = severity points x status multiplier over de-duplicated findings",
         thresholds={"manual_review_at": bands.review_at, "investigate_at": bands.investigate_at},
-        decision_reason=reason)
+        decision_reason=reason, rule_score=rule_final, llm_score=llm_extra)
     progress("scoring", "done", {"score": final, "decision": decision})
 
     progress("summary", "running")

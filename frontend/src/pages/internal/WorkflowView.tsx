@@ -10,15 +10,17 @@ type Props = { overview: Overview; claims: InternalSummary[]; client: ReturnType
 
 export default function WorkflowView({ overview, claims, client, onOpenClaim }: Props) {
   const done = claims.filter((c) => c.status === 'completed')
-  const [overlayId, setOverlayId] = useState<string>('')
+  // 'latest' follows the newest completed claim, so a claim just submitted from the demo journey appears here on
+  // the next 3-second refresh. Picking a claim pins it; '' shows no overlay.
+  const [choice, setChoice] = useState<string>('latest')
   const [overlay, setOverlay] = useState<InternalDetail | null>(null)
+  const overlayId = choice === 'latest' ? (done[0]?.claim_id ?? '') : choice
 
   useEffect(() => {
-    if (!overlayId && done[0]) setOverlayId(done[0].claim_id)
-  }, [done, overlayId])
-  useEffect(() => {
     if (!overlayId) return setOverlay(null)
-    client.claim(overlayId).then(setOverlay).catch(() => setOverlay(null))
+    let live = true
+    client.claim(overlayId).then((d) => live && setOverlay(d)).catch(() => live && setOverlay(null))
+    return () => { live = false }
   }, [overlayId, client])
 
   const a = overlay?.assessment
@@ -33,8 +35,9 @@ export default function WorkflowView({ overview, claims, client, onOpenClaim }: 
         actions={
           <div className="flex items-center gap-2 text-xs">
             <label htmlFor="overlay" className="text-slate-500">Overlay results from</label>
-            <select id="overlay" value={overlayId} onChange={(e) => setOverlayId(e.target.value)}
-              className="h-8 rounded-lg border-0 bg-slate-50 px-2 text-xs ring-1 ring-slate-200 focus:ring-2 focus:ring-indigo-600 focus:outline-none">
+            <select id="overlay" value={choice} onChange={(e) => setChoice(e.target.value)}
+              className="h-8 rounded-lg border-0 bg-indigo-50/60 px-2 text-xs ring-1 ring-indigo-100 focus:ring-2 focus:ring-indigo-600 focus:outline-none">
+              <option value="latest">Latest claim{done[0] ? ` (${done[0].claim_id})` : ''}</option>
               <option value="">No claim</option>
               {done.map((c) => (
                 <option key={c.claim_id} value={c.claim_id}>{c.claim_id} · {c.claimant} · {c.risk_score}</option>
@@ -81,7 +84,7 @@ export default function WorkflowView({ overview, claims, client, onOpenClaim }: 
                       <span className="flex items-center gap-1.5 text-xs font-semibold text-slate-900">
                         <Icon className="size-3.5 text-indigo-600" aria-hidden /> {ag.title}
                       </span>
-                      <span className="text-[10px] text-slate-500">w {ag.weight}</span>
+                      <span className="text-[10px] text-slate-400">{r ? `${r.findings.length} findings` : ''}</span>
                     </div>
                     <div className="mt-2 flex items-center gap-1 text-[11px]">
                       <span className="rounded-md bg-indigo-50 px-1.5 py-0.5 font-medium text-indigo-700">Rules</span>
@@ -96,11 +99,11 @@ export default function WorkflowView({ overview, claims, client, onOpenClaim }: 
                     {r && (
                       <div className="mt-2.5">
                         <div className="flex justify-between text-[11px] text-slate-600">
-                          <span>{r.llm_used ? `rules ${Math.round(r.rule_score ?? r.score)} + LLM ${r.llm_points} (${r.findings.filter((f) => f.source === 'llm').length} findings)` : `rules ${Math.round(r.score)}`}</span>
+                          <span>{scoreLine(r)}</span>
                           <span className={cn('font-semibold', { green: 'text-emerald-600', amber: 'text-amber-600', red: 'text-rose-600', slate: '' }[scoreTone(r.score)])}>{Math.round(r.score)}</span>
                         </div>
                         <ScoreBar score={r.score} className="mt-1" />
-                        <div className="mt-1 text-[10px] text-slate-500">{r.findings.length} findings · {r.tool_calls.length} tool calls</div>
+                        <div className="mt-1 text-[10px] text-slate-500">{r.findings.filter((f) => f.source === 'rule').length} rule · {r.findings.filter((f) => f.source === 'llm').length} LLM · {r.tool_calls.length} tool calls</div>
                       </div>
                     )}
                   </motion.div>
@@ -110,16 +113,25 @@ export default function WorkflowView({ overview, claims, client, onOpenClaim }: 
           </div>
           <Arrow />
           <Node step="4" title="Scoring & decision" icon={<Scale className="size-4" />} tone="amber">
-            <p className="text-[11px] leading-relaxed text-slate-600">sum of severity points x status multiplier, capped at 100</p>
+            <p className="text-[11px] leading-relaxed text-slate-600">
+              Rule points (severity x status, each fact counted once) + LLM points (max {overview.scoring.max_llm_points_per_agent} per agent, {overview.scoring.max_llm_points_total} per claim), capped at 100.
+            </p>
             <div className="mt-2 space-y-1 text-[11px]">
               <div className="flex justify-between"><Badge tone="green">Low risk</Badge><span>&lt; {t.manual_review_at}</span></div>
               <div className="flex justify-between"><Badge tone="amber">Manual review</Badge><span>{t.manual_review_at}–{t.investigate_at - 1}</span></div>
               <div className="flex justify-between"><Badge tone="red">Investigate</Badge><span>≥ {t.investigate_at}</span></div>
             </div>
             {a && (
-              <div className="mt-3 rounded-lg bg-slate-50 p-2 text-center">
-                <div className="text-xl font-semibold tabular-nums">{a.risk_score}</div>
-                <Badge tone={DECISION_TONE[a.decision]}>{DECISION_LABEL[a.decision]}</Badge>
+              <div className="mt-3 rounded-lg bg-white p-2.5 text-center ring-1 ring-indigo-100">
+                <div className="font-display text-2xl font-semibold tabular-nums text-indigo-950">{a.risk_score}</div>
+                <div className="mt-0.5 text-[11px] text-slate-600 tabular-nums">
+                  rules {fmt(a.orchestration.rule_score)} + LLM {fmt(a.orchestration.llm_score)}
+                  {a.orchestration.rule_score + a.orchestration.llm_score > 100 && <span className="text-slate-500"> → capped at 100</span>}
+                </div>
+                <div className="mt-1.5"><Badge tone={DECISION_TONE[a.decision]}>{DECISION_LABEL[a.decision]}</Badge></div>
+                <p className="mt-2 text-left text-[10px] leading-snug text-slate-500">
+                  Agents can report the same fact; the claim total counts it once, so it is not the sum of the agent scores.
+                </p>
               </div>
             )}
           </Node>
@@ -150,10 +162,10 @@ export default function WorkflowView({ overview, claims, client, onOpenClaim }: 
             ))}
           </ul>
         </Panel>
-        <Panel title="Guardrails" icon={<Gauge className="size-4 text-emerald-600" aria-hidden />}>
+        <Panel title="Guardrails" icon={<Gauge className="size-4 text-indigo-600" aria-hidden />}>
           <ul className="space-y-2 text-sm text-slate-700">
             <Li>Claim data and tool output are treated as untrusted data, never as instructions.</Li>
-            <Li>The LLM can't issue “high” findings or override the rule score.</Li>
+            <Li>The LLM can't issue “high” findings and adds at most {overview.scoring.max_llm_points_total} points per claim.</Li>
             <Li>Date of birth is never sent to the LLM.</Li>
             <Li>The customer never sees scores, agent names or findings.</Li>
             <Li>Each agent fails independently, so one failure can't block the claim.</Li>
@@ -170,9 +182,20 @@ export default function WorkflowView({ overview, claims, client, onOpenClaim }: 
 }
 
 const TONES = {
-  sky: 'from-sky-50 ring-sky-200 [&_.dot]:bg-sky-600',
-  amber: 'from-amber-50 ring-amber-200 [&_.dot]:bg-amber-500',
-  green: 'from-emerald-50 ring-emerald-200 [&_.dot]:bg-emerald-600',
+  sky: 'from-indigo-50 ring-indigo-100 [&_.dot]:bg-indigo-500',
+  amber: 'from-indigo-50 ring-indigo-200 [&_.dot]:bg-indigo-700',
+  green: 'from-indigo-50 ring-indigo-100 [&_.dot]:bg-indigo-900',
+}
+
+const fmt = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(1))
+
+/** "rules 100 + LLM 5 → max 100" so the agent line adds up when the 100 cap applies. */
+function scoreLine(r: { rule_score: number | null; score: number; llm_used: boolean; llm_points: number; findings: { source: string }[] }) {
+  const rule = r.rule_score ?? r.score
+  if (!r.llm_used) return `rules ${fmt(rule)}`
+  const n = r.findings.filter((f) => f.source === 'llm').length
+  const capped = rule + r.llm_points > 100
+  return `rules ${fmt(rule)} + LLM ${fmt(r.llm_points)} (${n} finding${n === 1 ? '' : 's'})${capped ? ' → max 100' : ''}`
 }
 
 function Node({ step, title, icon, tone, children }: { step: string; title: string; icon: ReactNode; tone: keyof typeof TONES; children: ReactNode }) {
@@ -209,7 +232,7 @@ function Arrow() {
 function Step({ n, title, children }: { n: number; title: string; children: ReactNode }) {
   return (
     <li className="flex gap-3">
-      <span className="grid size-6 shrink-0 place-items-center rounded-full bg-violet-100 text-xs font-semibold text-violet-700">{n}</span>
+      <span className="grid size-6 shrink-0 place-items-center rounded-full bg-indigo-100 text-xs font-semibold text-indigo-700">{n}</span>
       <div>
         <div className="font-medium text-slate-900">{title}</div>
         <p className="text-xs leading-relaxed text-slate-600">{children}</p>

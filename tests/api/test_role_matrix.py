@@ -25,6 +25,7 @@ PERMISSIONS = {
     ("GET", "/api/internal/overview"): ALL,
     ("GET", "/api/internal/claims"): ALL,
     ("GET", "/api/internal/claims/{claim_id}"): ALL,
+    ("GET", "/api/internal/claims/{claim_id}/documents/{index}"): ALL,
     ("POST", "/api/internal/claims"): ASSESS,
     ("POST", "/api/assess"): ASSESS,
     ("POST", "/api/internal/reset"): {"Administrator"},

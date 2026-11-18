@@ -49,7 +49,7 @@ export const DOC_LABEL: Record<string, string> = {
 
 export const CHECK_OUTCOME_LABEL = {
   no_issues: 'No issues found',
-  unavailable: 'Verification unavailable',
+  unavailable: 'Specialist review',
   simulated: 'SIMULATED',
 } as const
 

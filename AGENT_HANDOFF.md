@@ -45,7 +45,7 @@ About 63 of 140 tasks are complete (milestones 1-13, plus 14.1, 14.2 and 14.5).
 - Settings (`app/settings.py`, pydantic-settings): the only module that reads the environment.
 - Auth: argon2 passwords, 30-minute HS256 JWT, roles Investigator, Ops_Manager, Fraud_Team, Administrator (`app/api/auth.py`, `app/api/deps.py`). The shared internal key is gone. Login form in the internal console.
 - API (`app/api/`, routers auto-registered): customer intake and status, demo, internal claims (create, list with filters, detail), admin (health, overview, reset, /api/assess), decisions (`POST /api/claims/{id}/decisions`), finding feedback, standard error envelope `{"error": {code, message, fields, request_id}}`. A role-matrix test checks every route.
-- Customer view (`app/api/customer_view.py`): no scores, findings or agent names; labels limited to "No issues found", "Verification unavailable", "SIMULATED". Policy violations return 422 and are stored with a finding for review.
+- Customer view (`app/api/customer_view.py`): no scores, findings or agent names; labels limited to "No issues found", "Specialist review", "SIMULATED" (renamed from "Verification unavailable" on 2026-11-21). Policy violations return 422 and are stored with a finding for review.
 - Adapters (`app/adapters/`): factory with lazy imports, local filesystem storage, pypdf extraction. Contract tests in `tests/contract/`.
 - Logging: structlog JSON with request id, no personal data (`app/logging_setup.py`).
 - Frontend: customer journey restyled to a blue, square-cornered insurer theme; internal console has login.
