@@ -1,8 +1,19 @@
-﻿version: "risk-2025.1"
+﻿version: "risk-2026.2"
 label: "Ordering signal, not a probability"
 severity_points: {low: 10, medium: 25, high: 45}
 status_multiplier: {CONFIRMED_RULE_VIOLATION: 1.0, POTENTIAL_ANOMALY: 0.6}
 bands: {review_at: 30, investigate_at: 60}
+# A low-risk claim is auto-approved only when the claimed amount is below this (rupees); otherwise a person reviews it.
+auto_approve_max_amount: 2000
+# Fixed priority of each agent in the decision, in percent (must sum to 100). An agent's rule points are
+# multiplied by weight x number of agents, so equal weights (20 each) give the unweighted score and the bands
+# keep their meaning. Direct evidence on the claim (bill, documents) weighs most; statistical profiles least.
+agent_weights:
+  invoice_check: 25     # Invoice Validation: amounts, duplicates, payment, GST
+  document_scan: 25     # Document Forensics: tampering, reuse, documents against the claim
+  medical_review: 20    # Medical Review: diagnosis, medicines, lab reports, treatment
+  provider_profile: 15  # Provider Profile: hospital and doctor registry and behaviour
+  claimant_profile: 15  # User Profile: the policyholder's history (an indicator only)
 thresholds:
   policy_purchase_gap_days: 30
   preauth_overrun_pct: 10

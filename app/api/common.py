@@ -109,7 +109,7 @@ def store_rejected_claim(claim: Claim, docs: list[DocumentInfo], rule: str, mess
             correlation_key=f"policy_eligibility:{rule}", rule_version=INTAKE_RULE_VERSION))
 
 
-async def accept_submission(payload: str, documents: list[UploadFile], document_types: str) -> str:
+async def accept_submission(payload: str, documents: list[UploadFile], document_types: str, demo: bool = False) -> str:
     """Validate a ClaimSubmission JSON + documents, apply policy rules, store and start processing.
     Returns the new claim id. Shared by ``POST /api/claims`` and ``POST /api/internal/claims``.
 
@@ -133,6 +133,10 @@ async def accept_submission(payload: str, documents: list[UploadFile], document_
         raise HTTPException(422, "Please upload at least one document.")
 
     docs = await read_documents(documents, types)
+    if not demo:  # files from "test scenario data/" uploaded by hand are demo claims too
+        from app.core.demo_mark import is_signed_demo
+
+        demo = is_signed_demo(docs, sub.invoice.invoice_number)
     claim = Claim(claim_id=f"CLM-{uuid.uuid4().hex[:10].upper()}", claimant_id=p["claimant_id"],
                   claimant_name=p["holder_name"], hospital_id=sub.hospital_id, doctor_id=sub.doctor_id,
                   diagnosis=DISEASES[sub.disease_id]["name"], admission_date=sub.admission_date,
@@ -144,5 +148,6 @@ async def accept_submission(payload: str, documents: list[UploadFile], document_
     # The console's LLM analysis switch (server-side, Administrator-controlled) decides; read once per claim.
     from app import runtime_settings
 
-    jobs.start(claim, docs, runtime_settings.llm_effective())
+    # demo: a one-click scenario, stored but kept out of the history later claims are compared with.
+    jobs.start(claim, docs, runtime_settings.llm_effective(), register="demo" if demo else "claim")
     return claim.claim_id

@@ -26,7 +26,7 @@ from app.core.legacy_adapter import adapt_findings, context_from_claim
 from app.core.orchestrator import AssessmentContext, LegacyAgentRunner, _status_for, assess
 from app.core.routing import route
 from app.core.risk_config import load_risk_config
-from app.db.repos import open_repos
+from app.db.repos import DEMO_CHANNEL, open_repos
 from app.models import (AgentResult, AgentTrace, Claim, DocumentInfo, Finding, FraudAssessment,
                         Orchestration)
 
@@ -80,12 +80,37 @@ def claim_uuid(claim_id: str) -> UUID:
     return uuid5(NAMESPACE_URL, f"claim:{claim_id}")
 
 
+def _weighted_rule_score(runners, traces: list[AgentTrace], points_by_check: dict[str, float], config) -> float:
+    """Rule score with each agent's fixed priority (risk_scoring.v1.yaml ``agent_weights``).
+
+    An agent's rule score (its de-duplicated rule points, at most 100) is multiplied by its weight x the number
+    of agents, so equal weights give the plain sum. Points from checks no agent owns (an orchestrator
+    failure) count unweighted. Each trace records the agent's fixed weight and its weighted points."""
+    n = len(runners)
+    owned: set[str] = set()
+    total = 0.0
+    by_agent = {}
+    for r in runners:
+        owned |= set(r.check_ids)
+        agent_points = min(100.0, sum(points_by_check.get(c, 0.0) for c in r.check_ids))  # the agent's rule score
+        by_agent[r.name] = agent_points * config.agent_multiplier(r.name, n)
+        total += by_agent[r.name]
+    total += sum(p for c, p in points_by_check.items() if c not in owned)
+    for t in traces:
+        pct = config.agent_weights.get(t.agent, 100 / n) if config.agent_weights else 100 / n
+        t.weightage_pct = round(pct, 1)
+        t.weight = round(pct / 100, 4)
+        t.weighted_contribution = round(by_agent.get(t.agent, 0.0), 1)
+    return min(100.0, round(total, 1))
+
+
 async def assess_claim(claim: Claim, docs: list[DocumentInfo], use_llm: bool = True,
                        progress=_noop, register: str | None = "claim") -> FraudAssessment:
     """progress(stage, status, info) is called per agent (rules, rules_done, done) and for the
     'scoring' and 'summary' stages. It may be called from worker threads.
 
-    register: "claim" = write to history, "test" = write labelled is_test, None = do not write.
+    register: "claim" = write to history, "test" = write labelled is_test, "demo" = store it but keep it out of
+    the history later claims are compared with (one-click demo scenarios), None = do not write.
     """
     t0 = time.perf_counter()
     config = load_risk_config()
@@ -94,7 +119,6 @@ async def assess_claim(claim: Claim, docs: list[DocumentInfo], use_llm: bool = T
                             rule_version=config.version, claim=claim, documents=tuple(docs))
     result = await assess(ctx, runners, config)
     total_ms = (time.perf_counter() - t0) * 1000
-    progress("scoring", "running")
 
     points_by_check: dict[str, float] = {}
     for c in result.score.contributions:
@@ -120,35 +144,42 @@ async def assess_claim(claim: Claim, docs: list[DocumentInfo], use_llm: bool = T
 
     # LLM review (console switch on): every completed agent in parallel. The review adds AI observations and
     # reasoning; llm_score then adds capped points for them on top of the rule score (risk_scoring.v1.yaml: llm).
-    if use_llm and llm.enabled():
-        async def _review(res: AgentResult) -> AgentResult:
-            if res.agent not in completed:
-                return res
+    # Each agent is reported done as soon as its own review returns, so the timeline shows real per-agent times.
+    async def _review(res: AgentResult) -> AgentResult:
+        if use_llm and llm.enabled() and res.agent in completed:
             progress(res.agent, "llm_review")
-            return await asyncio.to_thread(llm_review.review, res.agent, claim, list(docs), res)
-
-        results = list(await asyncio.gather(*(_review(res) for res in results)))
-    for res in results:
+            res = await asyncio.to_thread(llm_review.review, res.agent, claim, list(docs), res)
         progress(res.agent, "done", {"score": res.score, "llm_used": res.llm_used})
+        return res
 
-    rule_final = result.score.score
+    results = list(await asyncio.gather(*(_review(res) for res in results)))
+    progress("scoring", "running")
+
+    rule_final = _weighted_rule_score(runners, traces, points_by_check, config)
     llm_extra = llm_review.llm_score(results, config) if use_llm else 0.0
     final = min(100.0, round(rule_final + llm_extra, 1))
     queue = route(final, config.bands)
-    needs_review = result.needs_human_review and queue == "low"
+    # Auto-approval is only for small claims: a low-risk claim at or above the limit goes to a person.
+    limit = config.auto_approve_max_amount
+    over_limit = queue == "low" and limit is not None and claim.claimed_amount >= limit
+    needs_review = (result.needs_human_review and queue == "low") or over_limit
     claim_status = _status_for(queue, needs_review)
-    decision = QUEUE_TO_DECISION[queue]
+    decision = "manual_review" if over_limit else QUEUE_TO_DECISION[queue]
     peak = max(results, key=lambda a: a.score)
     bands = config.bands
-    reason = (f"Score {final} = rules {rule_final} + LLM {llm_extra} from {len(result.score.contributions)} scored "
-              f"rule finding(s) (config {result.score.config_version}); score {final} maps to the '{queue}' queue.")
-    if needs_review:
+    reason = (f"Score {final} = weighted rules {rule_final} + LLM {llm_extra} from {len(result.score.contributions)} "
+              f"scored rule finding(s) (config {result.score.config_version}); score {final} maps to the '{queue}' queue.")
+    if over_limit:
+        reason += (f" The risk is low, but only claims below Rs {limit:,.0f} are auto-approved; this claim is "
+                   f"Rs {claim.claimed_amount:,.0f}, so a person reviews it.")
+    elif needs_review:
         reason += " Some checks were inconclusive, so a person should review the claim."
     orchestration = Orchestration(
         agents_run_in_parallel=_overlapped(traces), total_duration_ms=round(total_ms, 2),
         sum_of_agent_durations_ms=round(sum(t.duration_ms for t in traces), 2), traces=traces,
         weighted_score=final, peak_agent=peak.agent, peak_score=peak.score, peak_floor=0.0, final_score=final,
-        score_rule="final = min(100, rule points + capped LLM points); points = severity points x status multiplier over de-duplicated findings",
+        score_rule="final = min(100, sum over agents of agent rule points x (weight x agents) + capped LLM points); "
+                   "points = severity points x status multiplier over de-duplicated findings",
         thresholds={"manual_review_at": bands.review_at, "investigate_at": bands.investigate_at},
         decision_reason=reason, rule_score=rule_final, llm_score=llm_extra)
     progress("scoring", "done", {"score": final, "decision": decision})
@@ -158,7 +189,8 @@ async def assess_claim(claim: Claim, docs: list[DocumentInfo], use_llm: bool = T
     progress("summary", "done")
     if register is not None:
         with open_repos() as repos:
-            repos.register_claim(claim, [d.sha256 for d in docs], is_test=(register == "test"))
+            repos.register_claim(claim, [d.sha256 for d in docs], is_test=(register == "test"),
+                                 channel=DEMO_CHANNEL if register == "demo" else None)
     return FraudAssessment(claim_id=claim.claim_id, risk_score=final, decision=decision, agent_results=results,
                            orchestration=orchestration, summary=summary, recommended_queue=queue,
                            needs_human_review=needs_review, score_label=result.score.label,

@@ -82,6 +82,23 @@ class RiskConfig(BaseModel):
     thresholds: Thresholds
     gst_exempt_categories: list[str] = Field(default_factory=list)
     llm: LlmScoring = Field(default_factory=LlmScoring)
+    # Fixed priority per agent in percent, summing to 100. Empty = every agent counts equally.
+    agent_weights: dict[str, float] = Field(default_factory=dict)
+    # Low-risk claims are auto-approved only below this claimed amount (rupees). None = no limit.
+    auto_approve_max_amount: float | None = Field(default=None, gt=0)
+
+    @model_validator(mode="after")
+    def _check_weights(self) -> "RiskConfig":
+        w = self.agent_weights
+        if w and (any(v <= 0 for v in w.values()) or abs(sum(w.values()) - 100) > 0.01):
+            raise ValueError("agent_weights must be positive and sum to 100")
+        return self
+
+    def agent_multiplier(self, agent: str, n_agents: int) -> float:
+        """Factor applied to an agent's rule points: its weight share x the number of agents (1.0 when equal)."""
+        if not self.agent_weights or n_agents <= 0:
+            return 1.0
+        return self.agent_weights.get(agent, 100 / n_agents) / 100 * n_agents
 
     @property
     def scored_statuses(self) -> tuple[str, ...]:

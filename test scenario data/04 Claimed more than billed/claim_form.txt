@@ -1,0 +1,44 @@
+SCENARIO: Claimed more than billed
+Agent expected to react: Invoice Validation
+Expected score: about 90/100 from the weighted rules (with LLM analysis on, the LLM can add up to 25 points)
+What to look for: The claim form says 48,500. The bill total and the amount paid on the bill are 41,850.
+Generated on 19-Nov-2026. Dates are relative to that day.
+
+Open http://localhost:5173/ (no ?demo=1 needed) and fill in the form as below.
+
+STEP 1 - POLICY
+  Policy number ............... POL-1001
+  Policyholder date of birth .. 18-Apr-1992   (date picker: 04/18/1992)
+  Click 'Find policy'. It shows policyholder A. Kumar, plan Family Floater Gold.
+
+STEP 2 - HOSPITAL & TREATMENT
+  Network hospital ............ City General Hospital (Pune)
+  Treating doctor ............. Dr. Asha Rao (General Surgery)
+  Condition treated ........... Acute appendicitis
+  Admission date .............. 03-Nov-2026   (date picker: 11/03/2026)
+  Discharge date .............. 07-Nov-2026   (date picker: 11/07/2026)
+
+STEP 3 - BILL DETAILS
+  Bill / invoice number ....... INV-34537E
+  Bill date ................... 07-Nov-2026   (date picker: 11/07/2026)
+  Hospital GSTIN (optional) ... 27AAACC1111A1ZQ
+  Line items (description  ->  amount):
+    1. Room charges - semi-private (4 days x 3,000)  ->  12,000
+    2. Laparoscopic appendectomy (surgeon + OT)  ->  22,000
+    3. Anaesthesia charges  ->  4,500
+    4. Laboratory and imaging (CBC, CRP, USG abdomen)  ->  2,350
+    5. Pharmacy - inpatient medicines  ->  1,000
+  Bill total (the form adds it up) .. 41,850
+  Amount you are claiming ........... 48,500
+
+STEP 4 - DOCUMENTS (upload these files from this folder)
+  Medical bill (itemised)              ->  medical_bill.pdf
+  Prescription                         ->  prescription.pdf
+  Medical report / discharge summary   ->  medical_report.pdf
+  Lab report                           ->  lab_report.pdf
+
+STEP 5 - REVIEW & SUBMIT
+  Tick the declaration and submit. The claim appears in the internal console (/internal) within a few seconds.
+
+Note: these files are signed as demo data for this server, so this claim does not become history for later
+claims and the scenario can be submitted again with the same result. Do not change the bill number.

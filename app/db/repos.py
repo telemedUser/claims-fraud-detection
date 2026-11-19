@@ -40,6 +40,14 @@ UNPROCESSED = "RECEIVED"
 REGISTERED_STATUS = "ASSESSED"
 POLICY_VIOLATION = "POLICY_VIOLATION"  # stored for review after a policy eligibility rejection (task 13.4)
 NOT_PRIOR = (UNPROCESSED, POLICY_VIOLATION)  # statuses that are not earlier submissions
+# Claims submitted from a one-click demo scenario. They are stored (so the console, documents and decisions work)
+# but never count as history for later claims, so a scenario gives the same result every time it is run.
+DEMO_CHANNEL = "demo"
+
+
+def _is_prior():
+    """SQL condition: the claim counts as an earlier submission for history, duplicate and profile checks."""
+    return m.Claim.status.not_in(NOT_PRIOR) & (m.Claim.channel != DEMO_CHANNEL)
 
 
 def _num(v: Decimal | float | int | None, default: float | int | None = None) -> float | int | None:
@@ -200,7 +208,7 @@ class InvoiceRepo:
         q = (select(m.Invoice.id).join(m.Claim, m.Claim.id == m.Invoice.claim_id)
              .join(m.Provider, m.Provider.id == m.Claim.provider_id)
              .where(m.Provider.code == hospital_id, m.Invoice.invoice_number == invoice_number,
-                    m.Claim.status.not_in(NOT_PRIOR)).limit(1))
+                    _is_prior()).limit(1))
         return self.s.scalars(q).first() is not None
 
     def invoice_candidates(self, hospital_id: str, invoice_number: str, exclude_ref: str | None = None) -> list[dict]:
@@ -211,7 +219,7 @@ class InvoiceRepo:
                     m.Claim.claimant_ref, m.Provider.code)
              .join(m.Claim, m.Claim.id == m.Invoice.claim_id)
              .outerjoin(m.Provider, m.Provider.id == m.Claim.provider_id)
-             .where(m.Claim.status.not_in(NOT_PRIOR)))
+             .where(_is_prior()))
         cond = m.Provider.code == hospital_id
         if tail:
             cond = cond | m.Invoice.invoice_number.contains(tail)
@@ -230,7 +238,7 @@ class InvoiceRepo:
         if not hs:
             return set()
         q = (select(m.Document.sha256).join(m.Claim, m.Claim.id == m.Document.claim_id)
-             .where(m.Document.sha256.in_(hs), m.Claim.status.not_in(NOT_PRIOR)))
+             .where(m.Document.sha256.in_(hs), _is_prior()))
         return set(self.s.scalars(q))
 
 
@@ -245,7 +253,7 @@ class ClaimRepo:
         rows = self.s.execute(
             select(m.Claim, m.Provider.code)
             .outerjoin(m.Provider, m.Provider.id == m.Claim.provider_id)
-            .where(m.Claim.claimant_ref == claimant_id, m.Claim.status.not_in(NOT_PRIOR))
+            .where(m.Claim.claimant_ref == claimant_id, _is_prior())
             .order_by(m.Claim.submitted_on, m.Claim.created_at)
         ).all()
         out = []
@@ -269,7 +277,7 @@ class ClaimRepo:
         q = (select(m.Claim, m.Provider.code, m.Provider.name, m.Doctor.code)
              .outerjoin(m.Provider, m.Provider.id == m.Claim.provider_id)
              .outerjoin(m.Doctor, m.Doctor.id == m.Claim.doctor_id)
-             .where(m.Claim.claimant_ref == claimant_id, m.Claim.status.not_in(NOT_PRIOR)))
+             .where(m.Claim.claimant_ref == claimant_id, _is_prior()))
         if exclude_ref:
             q = q.where((m.Claim.claim_ref.is_(None)) | (m.Claim.claim_ref != exclude_ref))
         rows = self.s.execute(q.order_by(m.Claim.submitted_on, m.Claim.created_at)).all()
@@ -310,14 +318,18 @@ class ClaimRepo:
             mem = self.s.get(m.Member, key) if key else None
         return mem.id if mem else None
 
-    def register_claim(self, claim: Any, doc_hashes: Iterable[str], is_test: bool = False) -> m.Claim:
+    def register_claim(self, claim: Any, doc_hashes: Iterable[str], is_test: bool = False,
+                       channel: str | None = None) -> m.Claim:
         """Persist the claim, its invoice and document hashes (flush only; caller commits).
 
         Registering the same claim id again only adds document hashes it does not have yet.
+        ``channel`` DEMO_CHANNEL keeps the claim out of every history lookup.
         """
         row = self.s.get(m.Claim, claim_uuid(claim.claim_id))
         if row is None:
             row = self._create(claim, is_test)
+            if channel:
+                row.channel = channel
         have = set(self.s.scalars(select(m.Document.sha256).where(m.Document.claim_id == row.id)))
         for h in sorted(set(doc_hashes) - have):
             self.s.add(m.Document(claim_id=row.id, storage_key=f"sha256:{h}", sha256=h))
@@ -379,7 +391,7 @@ class ProviderActivityRepo:
         self.s = session
 
     def _prior(self, q, exclude_ref: str | None):
-        q = q.where(m.Claim.status.not_in(NOT_PRIOR))
+        q = q.where(_is_prior())
         if exclude_ref:
             q = q.where((m.Claim.claim_ref.is_(None)) | (m.Claim.claim_ref != exclude_ref))
         return q
@@ -428,7 +440,7 @@ class ProviderActivityRepo:
         """(decided claims, claims whose latest investigator decision is a flagged one) since ``since``."""
         q = (select(m.InvestigatorDecision.claim_id, m.InvestigatorDecision.decision, m.InvestigatorDecision.created_at)
              .join(m.Claim, m.Claim.id == m.InvestigatorDecision.claim_id)
-             .where(m.InvestigatorDecision.created_at >= since))
+             .where(m.InvestigatorDecision.created_at >= since, m.Claim.channel != DEMO_CHANNEL))
         if hospital:
             pid = self._provider_id(hospital)
             if pid is None:
@@ -532,8 +544,8 @@ class Repos:
     def seen_doc_hashes(self, hashes):
         return self.invoices.seen_doc_hashes(hashes)
 
-    def register_claim(self, claim, doc_hashes, is_test=False):
-        return self.claims.register_claim(claim, doc_hashes, is_test)
+    def register_claim(self, claim, doc_hashes, is_test=False, channel=None):
+        return self.claims.register_claim(claim, doc_hashes, is_test, channel)
 
 
 @contextmanager

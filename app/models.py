@@ -80,9 +80,10 @@ class AgentResult(BaseModel):
 
 class AgentTrace(BaseModel):
     agent: str
-    weight: float
+    weight: float  # the agent's fixed weight, 0..1 (weightage_pct / 100)
     score: float
-    weighted_contribution: float
+    weighted_contribution: float  # the agent's rule score x (weight x number of agents)
+    weightage_pct: float = 0.0  # fixed priority of the agent in percent (risk_scoring.v1.yaml agent_weights); sums to 100
     started_at_ms: float  # offset from orchestration start
     duration_ms: float
     finding_count: int

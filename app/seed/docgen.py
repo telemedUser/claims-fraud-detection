@@ -59,7 +59,7 @@ def build_case(kind: str, today: date | None = None) -> dict:
             "rx": [("Tab. Amoxicillin-Clavulanate 625 mg", "1 tablet", "Twice daily after food", "5 days"),
                    ("Tab. Paracetamol 650 mg", "1 tablet", "Three times daily if pain/fever", "5 days"),
                    ("Tab. Pantoprazole 40 mg", "1 tablet", "Once daily before breakfast", "5 days")],
-            "advice": "Avoid lifting heavy weights for 4 weeks. Keep wound dry. Review in OPD after 7 days for suture removal.",
+            "advice": "Avoid lifting heavy weights for 4 weeks. Keep the port-site dressings dry. Review in OPD after 7 days for a wound check.",
             # produced by the hospital billing system on the bill date
             "meta": {"/Producer": "CGH Hospital Information System v4.2", "/Creator": "CGH HIS Billing",
                      "/CreationDate": _pdfdate(dis), "/ModDate": _pdfdate(dis)},
@@ -101,6 +101,8 @@ def build_case(kind: str, today: date | None = None) -> dict:
         }
     elif kind in DEMO_KINDS:
         return _demo_case(kind, today)
+    elif kind in SCENARIO_KINDS:
+        return _scenario(kind, today)
     else:
         raise ValueError(f"unknown case {kind}")
     return _finish(case)
@@ -126,6 +128,13 @@ def _finish(case: dict) -> dict:
     case["lab_code"] = lab_registry.sign(case["lab_number"], case["admission"].isoformat(), case["policy_number"],
                                          [(n, r) for n, r, _ in signed])
     case["icd"] = case.get("icd") or primary_icd(case["disease_id"])
+    # Mark the PDFs as this generator's demo files for this bill number (app/core/demo_mark.py).
+    from app.core import demo_mark
+
+    sig = demo_mark.signature(case["invoice_number"])
+    case["meta"] = {k: v for k, v in case["meta"].items() if k != demo_mark.META_KEY}
+    if sig:
+        case["meta"][demo_mark.META_KEY] = sig
     return case
 
 
@@ -179,6 +188,133 @@ def _demo_case(kind: str, today: date) -> dict:
             ("Tab. Paracetamol 650 mg", "1 tablet", "Three times daily if fever", "5 days")],
         meta={"/Producer": "GVMC Hospital Information System v2.1", "/Creator": "GVMC HIS Billing",
               "/CreationDate": _pdfdate(dis), "/ModDate": _pdfdate(dis)})
+    return _finish(case)
+
+
+# ---------------------------------------------------------------- one-click demo scenarios
+# Each scenario starts from a claim that passes every check and changes one thing, so a single agent reacts
+# (except "suspicious", which combines many). The comments give the intended rule score of that agent
+# (points: low/medium/high = 6/15/27 for a potential anomaly, 10/25/45 for a confirmed rule violation).
+# Everything except "docs_edited" is visible on the generated PDFs. Demo submissions are kept out of the
+# claim history (channel "demo"), so clicking a scenario again gives the same result.
+SCENARIO_KINDS = (
+    "small_claim",
+    "bill_overclaim", "bill_duplicate", "bill_unpaid",
+    "docs_mismatch", "docs_edited",
+    "medical_mismatch", "medical_lab_altered",
+    "provider_mismatch",
+    "history_flags",
+)
+
+
+def _clean_fever(today: date) -> dict:
+    """Viral fever at Lakeview (H004) with Dr. Priya Nair (General Medicine): passes every check."""
+    uid = uuid.uuid4().hex[:6].upper()
+    adm = today - timedelta(days=10)
+    dis = adm + timedelta(days=2)
+    items = [("Room charges - general ward (2 days x 2,500)", 2, 2500), ("Physician consultation and monitoring", 1, 4200),
+             ("Laboratory (CBC, dengue NS1, malaria antigen)", 1, 2850), ("Pharmacy - inpatient medicines", 1, 1180)]
+    case = {
+        "policy_number": "POL-1001", "hospital_id": "H004", "doctor_id": "D004", "disease_id": "viral_fever",
+        "admission": adm, "discharge": dis, "bill_date": dis, "rx_date": dis,
+        "invoice_number": f"INV-{uid}", "bill_tax_id": sd.HOSPITALS["H004"]["tax_id"], "items": items,
+        "complaints": "High fever with body ache for 3 days.",
+        "findings": "Temperature 101.8 F. No localising signs. Dengue NS1 and malaria antigen negative.",
+        "labs": [("Haemoglobin", "13.9 g/dL", "13.0 - 17.0"), ("WBC count", "5,600 /uL", "4,000 - 11,000"),
+                 ("Platelet count", "2,10,000 /uL", "1,50,000 - 4,50,000")],
+        "procedure": "None.",
+        "course": "Treated with oral fluids and antipyretics. Afebrile from day 2.",
+        "condition": "Stable, afebrile.",
+        "rx": [("Tab. Paracetamol 650 mg", "1 tablet", "Three times daily if fever", "3 days"),
+               ("ORS sachets", "1 sachet in 1 L water", "Through the day", "3 days"),
+               ("Tab. Pantoprazole 40 mg", "1 tablet", "Once daily before breakfast", "3 days")],
+        "advice": "Plenty of oral fluids and rest. Review if fever returns.",
+        "meta": {"/Producer": "LMH Hospital Information System v3.0", "/Creator": "LMH HIS",
+                 "/CreationDate": _pdfdate(dis), "/ModDate": _pdfdate(dis)},
+    }
+    total = sum(q * r for _, q, r in items)
+    case["claimed_amount"] = total
+    case["payment"] = {"mode": "UPI", "receipt": f"RCPT-{uid}", "paid": total, "date": dis}
+    return case
+
+
+def _small_fever(today: date) -> dict:
+    """Same-day day-care visit for viral fever, 1,830 in total: low risk and below the auto-approval limit (2,000)."""
+    case = _clean_fever(today)
+    day = today - timedelta(days=6)
+    items = [("Day-care consultation (General Medicine)", 1, 600), ("Laboratory (CBC, dengue NS1)", 1, 750),
+             ("Pharmacy - medicines dispensed", 1, 480)]
+    total = sum(q * r for _, q, r in items)
+    case.update(
+        admission=day, discharge=day, bill_date=day, rx_date=day, items=items, claimed_amount=total,
+        findings="Temperature 100.6 F. No localising signs. Dengue NS1 negative.",
+        labs=[("Haemoglobin", "14.2 g/dL", "13.0 - 17.0"), ("WBC count", "6,100 /uL", "4,000 - 11,000"),
+              ("Platelet count", "2,40,000 /uL", "1,50,000 - 4,50,000")],
+        course="Seen in day care. Treated with oral fluids and antipyretics and sent home the same day.",
+        condition="Stable.",
+        rx=[("Tab. Paracetamol 650 mg", "1 tablet", "Three times daily if fever", "3 days"),
+            ("ORS sachets", "1 sachet in 1 L water", "Through the day", "3 days")],
+        meta={**case["meta"], "/CreationDate": _pdfdate(day), "/ModDate": _pdfdate(day)},
+        payment={**case["payment"], "paid": total, "date": day})
+    return case
+
+
+def _scenario(kind: str, today: date) -> dict:
+    if kind == "small_claim":
+        # Every agent passes and the claim is below the auto-approval limit, so it is auto-approved.
+        return _finish(_small_fever(today))
+    if kind.startswith("medical_"):
+        case = _clean_fever(today)
+    else:
+        case = build_case("clean", today)  # appendicitis at City General, 41,850, every check passes
+        case.pop("icd", None)
+
+    if kind == "bill_overclaim":
+        # Bill agent ~72: claimed 48,500 against a bill of 41,850 (CLAIM_VS_INVOICE_MISMATCH, confirmed high 45)
+        # and more than the 41,850 the receipt shows as paid (CLAIM_EXCEEDS_AMOUNT_PAID, high 27).
+        case["claimed_amount"] = 48500
+    elif kind == "bill_duplicate":
+        # Bill agent ~45: bill number INV-1001 was already claimed at City General (claim C-100).
+        case["invoice_number"] = "INV-1001"
+    elif kind == "bill_unpaid":
+        # Bill agent ~42: the bill shows 30,000 paid and 11,850 still due (BILL_PAYMENT_PENDING 15), yet the
+        # full 41,850 is claimed (CLAIM_EXCEEDS_AMOUNT_PAID 27).
+        case["payment"] = {**case["payment"], "paid": 30000}
+    elif kind == "docs_mismatch":
+        # Document agent ~30: the discharge summary names another patient (DOC_PATIENT_MISMATCH 15) and a
+        # discharge date 2 days later than the claim and the bill (DOC_DATES_MISMATCH 15).
+        case["report_patient"] = "S. Verma"
+        case["report_discharge"] = case["discharge"] + timedelta(days=2)
+    elif kind == "docs_edited":
+        # Document agent ~60: all four PDFs were saved by Adobe Photoshop (EDITING_SOFTWARE 15 each). Visible only
+        # in the files' properties (Producer / Creator), not on the page.
+        case["meta"] = {**case["meta"], "/Producer": "Adobe Photoshop 25.0", "/Creator": "Adobe Photoshop 25.0"}
+    elif kind == "medical_mismatch":
+        # Medical agent ~30: an antibiotic prescribed for a viral fever (MEDICINE_NOT_INDICATED 15) and an ICU day
+        # on the bill and in the discharge summary (TREATMENT_NOT_TYPICAL 15).
+        case["rx"] = case["rx"] + [("Tab. Azithromycin 500 mg", "1 tablet", "Once daily", "5 days")]
+        case["items"] = case["items"] + [("ICU observation (1 day)", 1, 6500)]
+        case["course"] = "Moved to the ICU for observation on day 1. Treated with oral fluids and antipyretics. Afebrile from day 2."
+        total = sum(q * r for _, q, r in case["items"])
+        case["claimed_amount"] = total
+        case["payment"] = {**case["payment"], "paid": total}
+    elif kind == "medical_lab_altered":
+        # Medical agent ~42: the lab issued a platelet count of 2,10,000 but the uploaded copy shows 85,000, so the
+        # lab's verification code no longer matches (LAB_REPORT_TAMPERED 27); the discharge summary codes the viral
+        # fever as dengue, ICD-10 A97.0 (ICD_DIAGNOSIS_MISMATCH 15).
+        case["labs_signed"] = list(case["labs"])
+        case["labs"] = case["labs"][:2] + [("Platelet count", "85,000 /uL", "1,50,000 - 4,50,000")]
+        case["icd"] = "A97.0"
+    elif kind == "provider_mismatch":
+        # Hospital and doctor agent ~60: the bill carries Lakeview's GSTIN instead of City General's
+        # (TAX_ID_MISMATCH, confirmed high 45) and the appendectomy is under Dr. Vikram Shah, an orthopaedic
+        # surgeon (DOCTOR_SPECIALTY_MISMATCH 15).
+        case["bill_tax_id"] = sd.HOSPITALS["H004"]["tax_id"]
+        case["doctor_id"] = "D005"
+    elif kind == "history_flags":
+        # Policyholder agent ~42: R. Singh (POL-2002) had a claim denied by an investigator (PRIOR_FRAUD_DECISION 27)
+        # and made 3 claims in the last 90 days (CLAIM_FREQUENCY 15). The claim and documents themselves are clean.
+        case["policy_number"] = "POL-2002"
     return _finish(case)
 
 
@@ -269,6 +405,10 @@ def _patient(c):
     return c["policy"]["holder_name"]
 
 
+# Time of day (HHMMSS) each document type is saved by the hospital system on the document date.
+_SAVED_AT = {"Medical Bill": "091500", "Prescription": "084010", "Medical Report": "085530", "Lab Report": "071245"}
+
+
 def _build(story, meta: dict, title: str) -> bytes:
     buf = io.BytesIO()
     SimpleDocTemplate(buf, pagesize=A4, leftMargin=15 * mm, rightMargin=15 * mm,
@@ -278,6 +418,11 @@ def _build(story, meta: dict, title: str) -> bytes:
     w = PdfWriter()
     for p in reader.pages:
         w.add_page(p)
+    meta = dict(meta)
+    if meta.get("/CreationDate") and meta.get("/CreationDate") == meta.get("/ModDate") and title in _SAVED_AT:
+        # An untouched system file: each document is saved at its own time of day, as a hospital system would.
+        stamp = str(meta["/CreationDate"])[:10] + _SAVED_AT[title]
+        meta["/CreationDate"] = meta["/ModDate"] = stamp
     w.add_metadata({**meta, "/Title": title, "/Nonce": uuid.uuid4().hex})  # nonce: unique hash per render
     out = io.BytesIO()
     w.write(out)
@@ -342,9 +487,10 @@ def medical_report(c) -> bytes:
     d = c["doctor"]
     labs = [["Test", "Result", "Reference range"]] + [list(x) for x in c["labs"]]
     story = _header(c, "DISCHARGE SUMMARY / MEDICAL REPORT")
+    # report_patient / report_discharge: what this document prints when a scenario makes it disagree with the claim
     story += [_kv([
-        ("Patient", _patient(c), "Policy No.", c["policy_number"]),
-        ("Admitted", _fmt(c["admission"]), "Discharged", _fmt(c["discharge"])),
+        ("Patient", c.get("report_patient") or _patient(c), "Policy No.", c["policy_number"]),
+        ("Admitted", _fmt(c["admission"]), "Discharged", _fmt(c.get("report_discharge") or c["discharge"])),
         ("Consultant", f"{d['name']} ({d['registration_no'] or 'reg. not stated'})", "Department", d["specialty"]),
     ])]
     final = f"{c['disease']['name']} (ICD-10: {c['icd']})" if c.get("icd") else c["disease"]["name"]

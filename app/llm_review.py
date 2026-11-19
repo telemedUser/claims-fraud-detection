@@ -71,8 +71,12 @@ SYSTEM = ("You are a senior health-insurance fraud analyst reviewing one aspect 
           'Reply with ONLY a JSON object with exactly these keys: {"additional_findings":[{"code":"UPPER_SNAKE_CASE",'
           '"severity":"low|medium","detail":"one sentence with evidence"}],"reasoning":"2-3 sentences"}. '
           "Look at the whole picture, not only the rule findings: check every document and every field in your "
-          "focus area, and report each distinct issue you can support with evidence (up to 8). "
-          "Use an empty list only if you find nothing new.")
+          "focus area, and report each distinct, material issue you can support with evidence (up to 8). "
+          "Do not report: missing GST, no GST breakdown or no tax lines on a hospital bill (most healthcare services "
+          "are GST-exempt); documents from one hospital or lab system sharing a layout, producer or similar timestamps; "
+          "differences in clinical practice or style that the documents do not contradict; or earlier claims that a "
+          "tool did not return (cite claim ids from tool results only). "
+          "When the claim and documents are consistent, return an empty list.")
 
 DECLARATIONS = [
     {"name": "get_hospital_profile", "description": "Look up a hospital's registry profile by id.",

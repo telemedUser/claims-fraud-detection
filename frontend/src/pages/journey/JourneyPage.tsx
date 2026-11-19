@@ -1,8 +1,8 @@
 import { useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router'
 import { AnimatePresence, motion } from 'motion/react'
-import { ArrowLeft, ArrowRight, FlaskConical, Send } from 'lucide-react'
-import { api, ApiError } from '../../api'
+import { ArrowLeft, ArrowRight, Send } from 'lucide-react'
+import { api, ApiError, type DemoKind } from '../../api'
 import { Alert, Button, Card } from '../../components/ui'
 import { cn, uid } from '../../lib/utils'
 import { initialState, STEPS, toClaimForm, toDocuments, validate, type JourneyState } from './state'
@@ -11,6 +11,7 @@ import TreatmentStep from './TreatmentStep'
 import BillStep from './BillStep'
 import DocumentsStep from './DocumentsStep'
 import ReviewStep from './ReviewStep'
+import DemoPanel from './DemoPanel'
 
 export default function JourneyPage() {
   const [state, setState] = useState<JourneyState>(initialState)
@@ -18,7 +19,8 @@ export default function JourneyPage() {
   const [showErrors, setShowErrors] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [demoLoading, setDemoLoading] = useState<string | null>(null)
+  const [demoLoading, setDemoLoading] = useState<DemoKind | null>(null)
+  const [demo, setDemo] = useState<{ kind: DemoKind; token: string } | null>(null)
   const [params] = useSearchParams()
   const navigate = useNavigate()
   const demoMode = params.get('demo') === '1'
@@ -44,7 +46,7 @@ export default function JourneyPage() {
     setSubmitting(true)
     setError(null)
     try {
-      const { claim_id } = await api.submitClaim(toClaimForm(state), toDocuments(state))
+      const { claim_id } = await api.submitClaim(toClaimForm(state), toDocuments(state), demo?.token)
       navigate(`/claims/${claim_id}/processing`)
     } catch (e) {
       setError(e instanceof ApiError ? e.message : 'Submission failed. Please try again.')
@@ -52,15 +54,15 @@ export default function JourneyPage() {
     }
   }
 
-  const fillDemo = async (kind: 'clean' | 'suspicious') => {
+  const fillDemo = async (kind: DemoKind) => {
     setDemoLoading(kind)
     setError(null)
     try {
-      const demo = await api.demo(kind)
-      const f = demo.form
+      const generated = await api.demo(kind)
+      const f = generated.form
       const [policy, files] = await Promise.all([
         api.lookupPolicy(f.policy_number, f.date_of_birth),
-        Promise.all(demo.documents.map(async (d) => [d.doc_type, await api.demoFile(d.url, d.filename)] as const)),
+        Promise.all(generated.documents.map(async (d) => [d.doc_type, await api.demoFile(d.url, d.filename)] as const)),
       ])
       const docs = { ...initialState.docs }
       files.forEach(([t, file]) => {
@@ -84,6 +86,7 @@ export default function JourneyPage() {
         claimedTouched: true,
         docs,
       })
+      setDemo({ kind, token: generated.token })
       goTo(4)
     } catch (e) {
       setError(e instanceof ApiError ? e.message : 'Could not load demo data.')
@@ -103,24 +106,7 @@ export default function JourneyPage() {
         </p>
       </div>
 
-      {demoMode && (
-        <Card className="mb-6 flex flex-col gap-3 border-dashed p-4 ring-amber-300 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-center gap-2 text-sm text-amber-900">
-            <FlaskConical className="size-4" aria-hidden />
-            <span>
-              <b>Demo mode.</b> Prefill the journey with a generated test case and its documents.
-            </span>
-          </div>
-          <div className="flex shrink-0 gap-2">
-            <Button size="sm" variant="secondary" loading={demoLoading === 'clean'} onClick={() => fillDemo('clean')}>
-              Genuine claim
-            </Button>
-            <Button size="sm" variant="secondary" loading={demoLoading === 'suspicious'} onClick={() => fillDemo('suspicious')}>
-              Suspicious claim
-            </Button>
-          </div>
-        </Card>
-      )}
+      {demoMode && <DemoPanel loading={demoLoading} loaded={demo?.kind ?? null} onPick={fillDemo} />}
 
       <Stepper step={step} onSelect={(i) => i < step && goTo(i)} />
 

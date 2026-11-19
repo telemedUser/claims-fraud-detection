@@ -8,6 +8,7 @@ from pydantic import BaseModel
 
 from app import jobs, ratelimit
 from app.api.common import accept_submission, verified_policy
+from app.api.demo import is_demo_submission
 from app.api.customer_view import customer_view
 from app.db.repos import DISEASES, open_repos
 
@@ -48,8 +49,10 @@ async def lookup_policy(body: PolicyLookup, request: Request):
 @router.post("/api/claims", status_code=202)
 async def submit_claim(payload: str = Form(..., description="ClaimSubmission as JSON"),
                        documents: list[UploadFile] = File(default=[]),
-                       document_types: str = Form("[]", description="JSON list of doc types, same order as documents")):
-    return {"claim_id": await accept_submission(payload, documents, document_types)}
+                       document_types: str = Form("[]", description="JSON list of doc types, same order as documents"),
+                       demo_token: str = Form("", description="Token of a generated demo scenario (demo mode only)")):
+    return {"claim_id": await accept_submission(payload, documents, document_types,
+                                                demo=is_demo_submission(demo_token, payload))}
 
 
 @router.get("/api/claims/{claim_id}/status")

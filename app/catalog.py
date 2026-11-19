@@ -69,9 +69,11 @@ def overview() -> dict:
     cfg = load_risk_config()
     sp = cfg.severity_points
     return {
-        "agents": [{**a, "weight": 1.0, "llm_focus": FOCUS[a["name"]]} for a in AGENTS],
+        "agents": [{**a, "weight": cfg.agent_weights.get(a["name"], 100 / len(AGENTS)) / 100,
+                    "llm_focus": FOCUS[a["name"]]} for a in AGENTS],
         "tools": [{"name": d["name"], "description": d["description"]} for d in DECLARATIONS],
-        "scoring": {"rule": "final = min(100, rule points + capped LLM points); points = severity points x status multiplier over de-duplicated findings",
+        "scoring": {"rule": "final = min(100, sum over agents of agent rule points x (weight x agents) + capped LLM points); "
+                            "points = severity points x status multiplier over de-duplicated findings",
                     "severity_points": {"low": sp.low, "medium": sp.medium, "high": sp.high}, "max_llm_points_per_agent": cfg.llm.max_points_per_agent, "max_llm_points_total": cfg.llm.max_points_total,
                     "llm_max_severity": "medium",
                     "thresholds": {"manual_review_at": cfg.bands.review_at, "investigate_at": cfg.bands.investigate_at}},

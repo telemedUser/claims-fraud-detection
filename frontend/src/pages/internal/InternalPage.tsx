@@ -1,18 +1,16 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react'
-import { Bot, ExternalLink, KeyRound, LayoutList, LogOut, RotateCcw, UsersRound, Workflow } from 'lucide-react'
-import { ApiError, authApi, internalApi, setUnauthorizedHandler, tokenStore, type InternalSummary, type LlmSwitch, type Me, type Overview } from '../../api'
+import { Bot, ExternalLink, KeyRound, LayoutList, LogOut, RotateCcw } from 'lucide-react'
+import { ApiError, authApi, internalApi, setUnauthorizedHandler, tokenStore, type InternalSummary, type Me, type Overview } from '../../api'
 import { Alert, Button, Card, Field, Input, Logo } from '../../components/ui'
 import { cn } from '../../lib/utils'
-import WorkflowView from './WorkflowView'
 import AgentsView from './AgentsView'
 import ClaimsView from './ClaimsView'
-import ClaimantsView from './ClaimantsView'
 
-type Tab = 'workflow' | 'agents' | 'claims' | 'claimants'
+type Tab = 'agents' | 'claims'
 
 // Roles allowed to see each section (all four roles may read the console; reset is Administrator only).
 const ALL_ROLES: Me['role'][] = ['Investigator', 'Ops_Manager', 'Fraud_Team', 'Administrator']
-const TAB_ROLES: Record<Tab, Me['role'][]> = { workflow: ALL_ROLES, agents: ALL_ROLES, claims: ALL_ROLES, claimants: ALL_ROLES }
+const TAB_ROLES: Record<Tab, Me['role'][]> = { agents: ALL_ROLES, claims: ALL_ROLES }
 const ROLE_LABEL: Record<Me['role'], string> = {
   Investigator: 'Investigator',
   Ops_Manager: 'Ops manager',
@@ -118,7 +116,6 @@ function Console({ me, overview: initial, client, onSignOut }: { me: Me; overvie
   const [overview, setOverview] = useState(initial)
   const [claims, setClaims] = useState<InternalSummary[]>([])
   const [selected, setSelected] = useState<string | null>(null)
-  const [claimant, setClaimant] = useState<string | null>(null)
   const [resetting, setResetting] = useState(false)
 
   const refresh = useCallback(async () => {
@@ -146,20 +143,9 @@ function Console({ me, overview: initial, client, onSignOut }: { me: Me; overvie
     setResetting(false)
   }
 
-  const openClaim = (id: string) => {
-    setSelected(id)
-    setTab('claims')
-  }
-  const openClaimant = (id: string) => {
-    setClaimant(id)
-    setTab('claimants')
-  }
-
-  const allTabs: { id: Tab; label: string; icon: typeof Workflow }[] = [
+  const allTabs: { id: Tab; label: string; icon: typeof Bot }[] = [
     { id: 'claims', label: `Claims (${claims.length})`, icon: LayoutList },
-    { id: 'workflow', label: 'Workflow', icon: Workflow },
     { id: 'agents', label: 'Agents', icon: Bot },
-    { id: 'claimants', label: 'Users', icon: UsersRound },
   ]
   const tabs = allTabs.filter((t) => TAB_ROLES[t.id].includes(me.role))
   const activeTab = tabs.some((t) => t.id === tab) ? tab : tabs[0]?.id
@@ -171,7 +157,6 @@ function Console({ me, overview: initial, client, onSignOut }: { me: Me; overvie
         <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4 px-4 py-4 sm:px-6">
           <Logo dark subtitle="Fraud Intelligence Console · internal" />
           <div className="flex flex-wrap items-center gap-2 text-xs">
-            <LlmToggle client={client} canChange={me.role === 'Administrator'} model={overview.llm.models[0]} onChange={refresh} />
             <a href="/?demo=1" target="_blank" rel="noreferrer">
               <Button variant="dark" size="sm"><ExternalLink className="size-3.5" aria-hidden /> Customer journey (demo)</Button>
             </a>
@@ -191,63 +176,11 @@ function Console({ me, overview: initial, client, onSignOut }: { me: Me; overvie
         </nav>
       </header>
       <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6">
-        {activeTab === 'workflow' && <WorkflowView overview={overview} claims={claims} client={client} onOpenClaim={openClaim} />}
         {activeTab === 'agents' && <AgentsView overview={overview} />}
         {activeTab === 'claims' && (
-          <ClaimsView me={me} overview={overview} claims={claims} client={client} selected={selected} onSelect={setSelected} onOpenClaimant={openClaimant} />
+          <ClaimsView me={me} overview={overview} claims={claims} client={client} selected={selected} onSelect={setSelected} />
         )}
-        {activeTab === 'claimants' && <ClaimantsView client={client} selected={claimant} onSelect={setClaimant} onOpenClaim={openClaim} />}
       </main>
     </div>
-  )
-}
-
-/** Server-side LLM analysis switch. Administrators can change it; other roles see its state.
- *  It applies to every claim submitted after the change (customers cannot change it). */
-function LlmToggle({ client, canChange, model, onChange }: {
-  client: ReturnType<typeof internalApi>; canChange: boolean; model?: string; onChange: () => void
-}) {
-  const [state, setState] = useState<LlmSwitch | null>(null)
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    client.settings().then((s) => setState(s.llm_analysis)).catch(() => setError('Settings unavailable'))
-  }, [client])
-
-  if (!state) return error ? <span className="text-rose-300">{error}</span> : null
-  const on = state.requested
-  const toggle = async () => {
-    setBusy(true)
-    setError(null)
-    try {
-      const s = await client.setLlm(!on)
-      setState(s.llm_analysis)
-      onChange()
-    } catch (e) {
-      setError(e instanceof ApiError ? e.message : 'Could not change the setting')
-    } finally {
-      setBusy(false)
-    }
-  }
-  const label = !state.provider_configured
-    ? 'LLM analysis: no API key on the server'
-    : on ? `LLM analysis on · ${state.provider}${model ? ` · ${model}` : ''}` : 'LLM analysis off (rules only)'
-  return (
-    <span className="flex items-center gap-2" data-testid="llm-toggle">
-      <label className={cn('flex items-center gap-2 rounded-full px-2.5 py-1 ring-1',
-        state.effective ? 'bg-white/15 text-white ring-white/30' : 'bg-white/5 text-indigo-100 ring-white/15',
-        canChange ? 'cursor-pointer' : 'cursor-default')}
-        title={canChange ? 'Applies to every claim submitted after the change' : 'Only an Administrator can change this'}>
-        <input type="checkbox" role="switch" className="peer sr-only" checked={on} disabled={!canChange || busy}
-          onChange={toggle} aria-label="Use LLM analysis for submitted claims" />
-        <span aria-hidden className={cn('relative h-4 w-7 rounded-full transition', on ? 'bg-sky-400' : 'bg-white/25',
-          'peer-focus-visible:ring-2 peer-focus-visible:ring-white')}>
-          <span className={cn('absolute top-0.5 size-3 rounded-full bg-white transition-all', on ? 'left-3.5' : 'left-0.5')} />
-        </span>
-        {busy ? 'Saving…' : label}
-      </label>
-      {error && <span className="text-rose-300">{error}</span>}
-    </span>
   )
 }

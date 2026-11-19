@@ -17,24 +17,29 @@ type Props = {
   onOpenClaimant?: (claimantId: string) => void
 }
 
-type Status = 'processing' | 'failed' | 'pending' | 'approve' | 'deny'
+type Status = 'processing' | 'failed' | 'pending' | 'auto' | 'approve' | 'deny'
 const STATUS: Record<Status, { label: string; tone: Tone }> = {
   processing: { label: 'Processing', tone: 'indigo' },
   failed: { label: 'Failed', tone: 'slate' },
   pending: { label: 'Pending review', tone: 'amber' },
+  auto: { label: 'Auto-approved', tone: 'green' },
   approve: { label: REVIEW_LABEL.approve, tone: REVIEW_TONE.approve },
   deny: { label: REVIEW_LABEL.deny, tone: REVIEW_TONE.deny },
 }
 
-/** One status for the list: processing state first, then the investigator's decision. */
+/** One status for the list: processing state, then the investigator's decision, then auto-approval
+ *  (low risk and below the auto-approval amount; the backend routes everything else to a person). */
 export function claimStatus(c: InternalSummary): Status {
   if (c.status !== 'completed') return c.status
-  return c.review?.decision === 'approve' ? 'approve' : c.review?.decision === 'deny' ? 'deny' : 'pending'
+  if (c.review?.decision === 'approve') return 'approve'
+  if (c.review?.decision === 'deny') return 'deny'
+  return c.decision === 'auto_approve' ? 'auto' : 'pending'
 }
 
 const FILTERS: { id: 'all' | Status; label: string }[] = [
   { id: 'all', label: 'All' },
   { id: 'pending', label: 'Pending review' },
+  { id: 'auto', label: 'Auto-approved' },
   { id: 'approve', label: 'Approved' },
   { id: 'deny', label: 'Rejected' },
   { id: 'processing', label: 'Processing' },

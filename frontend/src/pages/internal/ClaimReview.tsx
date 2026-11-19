@@ -143,6 +143,7 @@ export function ReviewPanel({ d, me, client, onDecided }: { d: InternalDetail; m
   const canDecide = DECIDER_ROLES.includes(me.role)
   const ready = d.status === 'completed'
   const review: Review | null = d.review
+  const auto = ready && d.decision === 'auto_approve'
 
   const decide = async (decision: HumanDecision) => {
     if (!reason.trim()) {
@@ -165,7 +166,13 @@ export function ReviewPanel({ d, me, client, onDecided }: { d: InternalDetail; m
 
   return (
     <Panel title="Your decision" icon={<Gavel className="size-4 text-indigo-600" aria-hidden />}
-      actions={review ? <Badge tone={REVIEW_TONE[review.decision] ?? 'slate'}>{REVIEW_LABEL[review.decision] ?? review.decision}</Badge> : <Badge tone="amber">Pending review</Badge>}>
+      actions={review ? <Badge tone={REVIEW_TONE[review.decision] ?? 'slate'}>{REVIEW_LABEL[review.decision] ?? review.decision}</Badge>
+        : auto ? <Badge tone="green">Auto-approved</Badge> : <Badge tone="amber">Pending review</Badge>}>
+      {auto && !review && (
+        <div className="mb-4 rounded-lg bg-emerald-50 px-4 py-3 text-sm text-emerald-900 ring-1 ring-emerald-200">
+          <b>Auto-approved.</b> Low risk and below the auto-approval amount, so no review was needed. You can still record a decision below.
+        </div>
+      )}
       {review && (
         <div className={cn('mb-4 rounded-lg px-4 py-3 text-sm ring-1', review.decision === 'approve' ? 'bg-emerald-50 text-emerald-900 ring-emerald-200' : 'bg-rose-50 text-rose-900 ring-rose-200')}>
           <b>{REVIEW_LABEL[review.decision] ?? review.decision}</b> by {review.by} on {fmtDateTime(review.at)}

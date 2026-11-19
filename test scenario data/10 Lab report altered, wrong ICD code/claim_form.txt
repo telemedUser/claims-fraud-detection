@@ -1,0 +1,43 @@
+SCENARIO: Lab report altered, wrong ICD code
+Agent expected to react: Medical Review
+Expected score: about 42/100 from the weighted rules (with LLM analysis on, the LLM can add up to 25 points)
+What to look for: The lab report shows platelets 85,000 but the lab issued 2,10,000 (its verification code no longer matches); the discharge summary codes viral fever as ICD-10 A97.0 (dengue).
+Generated on 19-Nov-2026. Dates are relative to that day.
+
+Open http://localhost:5173/ (no ?demo=1 needed) and fill in the form as below.
+
+STEP 1 - POLICY
+  Policy number ............... POL-1001
+  Policyholder date of birth .. 18-Apr-1992   (date picker: 04/18/1992)
+  Click 'Find policy'. It shows policyholder A. Kumar, plan Family Floater Gold.
+
+STEP 2 - HOSPITAL & TREATMENT
+  Network hospital ............ Lakeview Multispeciality Hospital (Mumbai)
+  Treating doctor ............. Dr. Priya Nair (General Medicine)
+  Condition treated ........... Viral fever
+  Admission date .............. 09-Nov-2026   (date picker: 11/09/2026)
+  Discharge date .............. 11-Nov-2026   (date picker: 11/11/2026)
+
+STEP 3 - BILL DETAILS
+  Bill / invoice number ....... INV-50C849
+  Bill date ................... 11-Nov-2026   (date picker: 11/11/2026)
+  Hospital GSTIN (optional) ... 27AAACL4444D1ZT
+  Line items (description  ->  amount):
+    1. Room charges - general ward (2 days x 2,500)  ->  5,000
+    2. Physician consultation and monitoring  ->  4,200
+    3. Laboratory (CBC, dengue NS1, malaria antigen)  ->  2,850
+    4. Pharmacy - inpatient medicines  ->  1,180
+  Bill total (the form adds it up) .. 13,230
+  Amount you are claiming ........... 13,230
+
+STEP 4 - DOCUMENTS (upload these files from this folder)
+  Medical bill (itemised)              ->  medical_bill.pdf
+  Prescription                         ->  prescription.pdf
+  Medical report / discharge summary   ->  medical_report.pdf
+  Lab report                           ->  lab_report.pdf
+
+STEP 5 - REVIEW & SUBMIT
+  Tick the declaration and submit. The claim appears in the internal console (/internal) within a few seconds.
+
+Note: these files are signed as demo data for this server, so this claim does not become history for later
+claims and the scenario can be submitted again with the same result. Do not change the bill number.

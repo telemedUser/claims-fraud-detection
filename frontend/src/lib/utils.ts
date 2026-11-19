@@ -33,7 +33,7 @@ export const scoreTone = (s: number | null | undefined) =>
   s == null ? 'slate' : s >= 60 ? 'red' : s >= 30 ? 'amber' : 'green'
 
 export const DECISION_LABEL: Record<string, string> = {
-  auto_approve: 'Low risk',
+  auto_approve: 'Auto-approve',
   manual_review: 'Manual review',
   investigate: 'Investigate',
 }

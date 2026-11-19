@@ -75,9 +75,9 @@ async def _process(job, claim, docs, use_llm, register="claim"):
     job["finished_at"] = _now()
 
 
-def start(claim: Claim, docs: list[DocumentInfo], use_llm: bool = True) -> dict:
+def start(claim: Claim, docs: list[DocumentInfo], use_llm: bool = True, register: str = "claim") -> dict:
     job = _new_job(claim, docs, use_llm)
-    task = asyncio.create_task(_process(job, claim, docs, use_llm))
+    task = asyncio.create_task(_process(job, claim, docs, use_llm, register))
     _TASKS.add(task)
     task.add_done_callback(_TASKS.discard)
     return job

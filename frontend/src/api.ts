@@ -83,7 +83,13 @@ export type StatusResponse = {
   report?: CustomerReport
   message?: string
 }
-export type DemoCase = { form: ClaimForm; documents: { doc_type: DocType; filename: string; url: string }[] }
+export type DemoKind =
+  | 'clean' | 'suspicious' | 'small_claim'
+  | 'bill_overclaim' | 'bill_duplicate' | 'bill_unpaid'
+  | 'docs_mismatch' | 'docs_edited'
+  | 'medical_mismatch' | 'medical_lab_altered'
+  | 'provider_mismatch' | 'history_flags'
+export type DemoCase = { kind: DemoKind; token: string; form: ClaimForm; documents: { doc_type: DocType; filename: string; url: string }[] }
 
 // ---------------------------------------------------------------- internal console types
 
@@ -106,6 +112,8 @@ export type AgentTrace = {
   weight: number
   score: number
   weighted_contribution: number
+  /** Share of the points behind the final score; the agents sum to 100. Absent on claims assessed before it was added. */
+  weightage_pct?: number
   started_at_ms: number
   duration_ms: number
   finding_count: number
@@ -289,17 +297,18 @@ export const api = {
   lookupPolicy: (policy_number: string, date_of_birth: string) =>
     request<Policy>('/api/policies/lookup', json({ policy_number, date_of_birth })),
 
-  submitClaim: (form: ClaimForm, docs: { file: File; docType: DocType }[]) => {
+  submitClaim: (form: ClaimForm, docs: { file: File; docType: DocType }[], demoToken?: string) => {
     const fd = new FormData()
     fd.append('payload', JSON.stringify(form))
     fd.append('document_types', JSON.stringify(docs.map((d) => d.docType)))
+    if (demoToken) fd.append('demo_token', demoToken)
     docs.forEach((d) => fd.append('documents', d.file, d.file.name))
     return request<{ claim_id: string }>('/api/claims', { method: 'POST', body: fd })
   },
 
   status: (id: string) => request<StatusResponse>(`/api/claims/${encodeURIComponent(id)}/status`),
 
-  demo: (kind: 'clean' | 'suspicious') => request<DemoCase>(`/api/demo/${kind}`),
+  demo: (kind: DemoKind) => request<DemoCase>(`/api/demo/${kind}`),
 
   demoFile: async (url: string, filename: string) => {
     const r = await fetch(url)

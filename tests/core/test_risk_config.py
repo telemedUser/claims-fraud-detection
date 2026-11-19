@@ -6,7 +6,8 @@ from app.core.risk_config import dump_risk_config, load_risk_config, parse_risk_
 
 def test_default_yaml_loads():
     cfg = load_risk_config()
-    assert cfg.version == "risk-2025.1"
+    assert cfg.version == "risk-2026.2"
+    assert sum(cfg.agent_weights.values()) == 100
     assert cfg.bands.review_at == 30 and cfg.bands.investigate_at == 60
     assert cfg.severity_points.high == 45
     assert cfg.status_multiplier.POTENTIAL_ANOMALY == 0.6
